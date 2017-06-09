@@ -154,7 +154,7 @@ class modify_barcode:
 							md = re.split(":", md)
 							alter = re.findall(r'\D', md[-1])
 							loci = re.findall(r'\d+', md[-1])
-							if !alter:
+							if len(alter) == 0:
 								pass
 							else:
 								for i in range((len(alter)):
