@@ -1,27 +1,29 @@
 import os, re, sys, gzip
-import pysam
+import getopt
+import time
+import subprocess
 
-class LRTK:
+class baseinfo:
 	def __init__(self):
 		self.configdist = {}
 
 	def get_config(self, configFile):
 		o_config = open (configFile, 'r')
-		while True:
-			config_line = o_config.readline().strip()
+		for config_line in o_config:
+			config_line = config_line.strip()
 			if len(config_line) == 0:
-				break
+				pass
 			elif config_line.startswith('#'):
 				pass
 			else:
-				(name, path) = re.split("=", config_line)
+				(name, path) = re.split(" = ", config_line)
 				name = name.strip()
 				path = path.strip()
 				path = path.replace("'", "")
 				path = path.replace('"', '')
 
 				self.configdist[name] = path
-				print (name, path)
+#				print (name, path)
 		o_config.close()
 
 	def get_path(self, name_variable):
@@ -43,19 +45,18 @@ class LRTK:
 		abs_path = self.get_path('barcode')
 		return abs_path
 
-	def Barcode_aln(self):
-		abs_path = self.get_path('barcode_aln')
+	def Barcode_aln_par(self):
+		abs_path = self.get_path('barcode_aln_parameter')
 		return abs_path
 
 class extract_barcode:
-	def revise(rawfq, outdir):
+	def revise(self, rawfq, outdir):
 		if rawfq.endswith('gz'):
 			o_rawfq = gzip.open(rawfq, 'rb')
 		else:
 			o_rawfq = open(rawfq, 'r')
 
 		(rawfq_path, rawfq_name) = os.path.split(rawfq)
-		print(rawfq_name)
 
 		b = rawfq_name
 		if(rawfq_name.find("fastq")):
@@ -67,8 +68,7 @@ class extract_barcode:
 			strinfo = re.compile('fq')
 			b = strinfo.sub('barcode', rawfq_name)
 
-		outfile = os.path.join(rawfq_path, b)
-		print(outfile)
+		outfile = os.path.join(outdir, b)
 
 		if outfile.endswith('gz'):
 			barcode_out = gzip.open(outfile, 'wb')
@@ -99,11 +99,12 @@ class extract_barcode:
 				barcode_out.write(barcode_line.encode())
 
 		barcode_out.close()
+		return outfile
 
 class modify_barcode:
-	def replace_barcode(rawfq, barcode_bam, prefix):
+	def replace_barcode(self, rawfq, barcode_sam, prefix):
 		L1 = LRTK()
-		samfile = pysam.AlignmentFile(barcode_bam, "rb")
+		samfile = open(barcode_sam, "r")
 		newfqfile1 = prefix + "_1.fq.gz"
 		newfqfile2 = prefix + "_2.fq.gz"
 
@@ -145,7 +146,7 @@ class modify_barcode:
 				barcodeinfo = re.split("\t", barcodeinfo.decode().strip())
 
 				id1 = re.split(" ", rawfq_id1)
-				if id1[0]= != barcodeinfo[0]:
+				if id1[0] != barcodeinfo[0]:
 					print >> sys.stderr, "ERROR - %s and %s do not match!" % (id1[0], barcodeinfo[0])
 				else:
 					(barcode_ori, realbarcodequa) = (list(barcodeinfo[9]), barcodeinfo[10])
@@ -157,7 +158,7 @@ class modify_barcode:
 							if len(alter) == 0:
 								pass
 							else:
-								for i in range((len(alter)):
+								for i in range(len(alter)):
 									ix = int(loci[i]) + i
 									barcode_ori[ix] = alter[i]
 
@@ -177,19 +178,20 @@ class modify_barcode:
 		newfq2_out.close()
 
 class CFCR:
-	def calculate(sorted_by_barcode_bam, outfile):
-		samfile = pysam.AlignmentFile(sorted_by_barcode_bam, 'rb')
+	def calculate(sorted_by_barcode_sam, outfile):
+		samfile = open(sorted_by_barcode_bam, 'r')
 
 		allbarcode = dict()
 		while True:
-			saminfo1 = re.split("\t", samfile.readline().decode())
-			saminfo2 = re.split("\t", samfile.readline().decode())
+			saminfo1 = re.split("\t", samfile.readline())
+			saminfo2 = re.split("\t", samfile.readline())
 
 			if len(saminfo1) == 0:
 				break
 			elif saminfo1[8] == 0:
 				pass
 			else:
+				
 				for bc in saminfo1[11:]:
 					if bc.startswith("BC"):
 						if bc not in allbarcode:
@@ -198,13 +200,18 @@ class CFCR:
 						else:
 							allbarcode[bc] = allbarcode[bc] + ";" + "\t".join(saminfo1[2,3,7])
 		
-		lsls
 
 class OUTERSOFT:
-	def bwa_barcode(barcode, outfile, bwa_path, bwa_parameter, ref_path, samtools_path):
-		print >> sys.stderr, "barcode alignment starts at %s" % (time.asctime())
-		subprocess.call([bwa_path, 'mem', ref_path, barcode, bwa_parameter, "|", samtools_path + 'view -h -S -b - >' + outfile])
-		print >> sys.stderr, "barcode alignment ends at %s" % (time.asctime())
+	def bwa_barcode(self, barcode, outfile, bwa_path, bwa_parameter, ref_path):
+		outdir = os.path.dirname(outfile)
+		shell = os.path.join(outdir, "barcode.align.sh")
+		oshell = open(shell, 'w')
+		shell_line = " ".join([bwa_path, 'mem', ref_path, barcode, bwa_parameter, "| grep -v '^@SQ'>" + outfile + "\n"])
+		oshell.write(shell_line)
+		oshell.close()
+		print(shell)
+		subprocess.call(["sh", shell])
+		return(outfile)
 
 	def bwa_fq(fq1, fq2, outprefix, bwa_path, bwa_parameter, samtools_path):
 		sai1 = outprefix + '.1.sai'
@@ -265,7 +272,9 @@ def LRTK_usage():
 	Usage: python LRTK.py -i config.txt
 
 	Options:
-		-i 
+		-c configure file
+		-i input fq, compressed and uncompressed fastq files are both availabe
+		-o output dir
 
 	'''
 	print (usage)
@@ -276,20 +285,25 @@ if __name__ == '__main__':
 		LRTK_usage()
 	
 	configurationFile = None
+	step = '0-'
 	qsub_q = None
 	qsub_P = None
 	qsub = None
 	kept = None
-	opts, args = getopt.gnu_getopt(sys.argv[1:], 'c:i:o:Qkf:')
+	opts, args = getopt.gnu_getopt(sys.argv[1:], 'c:i:o:s:Qkf:')
 	for o, a in opts:
 		if o == '-c': configurationFile = a
-		if o == '-i': inputDir = a
+		if o == '-i': inputfq = a
 		if o == '-o': outputDir = a
+		if o == '-s': step = a
 		if o == '-Q': qsub = True
 		if o == '-k': kept = True
-		if o == '-f': filter = True
+		if o == '-f': Filter = True
 
-	if os.path.isfile(configurationFile) and os.path.exists(configurationFile):
+	if configurationFile == None:
+		print >> sys.stderr, "config.txt not found!"
+		sys.exit(-1)
+	elif os.path.isfile(configurationFile) and os.path.exists(configurationFile):
 		pass
 	else:
 		print >> sys.stderr, "config.txt not found!"
@@ -300,14 +314,51 @@ if __name__ == '__main__':
 	else:
 		os.mkdir(outputDir)
 	
-	if os.path.exists(inputDir):
+	if os.path.exists(inputfq):
 		pass
 	else:
-		print >> sys.stderr, "input dir not found!\n"
-	
+		print >> sys.stderr, "input fq not found!\n"
 
+	_process_ = list()
+	if '-' in step:
+		sp = re.split('-', step)
+		if len(sp) == 1:
+			_process_ = range(int(sp[0]), 8)
+		elif len(sp) == 2:
+			_process_ = range(int(sp[0]), (int(sp[1]) + 1))
+		else:
+			print >> sys.stderr, "wrong command for -s: only single number(0~8), single number with '-'(0~8-), and two numbers seperated by '-'(0-8) are available"
+			sys.exit(-1)
+	else:
+		if re.match(r'\d+', step):
+			_process_.append(int(step))
+		else:
+			print >> sys.stderr, "wrong command for -s: only single number(0~8), single number with '-'(0~8-), and two numbers seperated by '-'(0-8) are available"
+			sys.exit(-1)
 
-if len(sys.argv) == 5:
-	revise(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
-else:
-	print("python", sys.argv[0], "10x.fq(fastq)[.gz] outdir bwa_path bwa_parameter")
+	O = OUTERSOFT()
+	G = baseinfo()
+	G.get_config(configurationFile)
+
+	inputfile = inputfq
+	extract_barcode = None
+	for p in _process_:
+		if p == 0:
+			R = extract_barcode()
+			sys.stderr.write("\n... ... step 0 ... ... %s \n\n" % time.asctime())
+			sys.stderr.write("[ %s ] extract original barcode info from %s\n" % (time.asctime(), inputfq))
+			extract_barcode = R.revise(inputfile, outputDir)
+			sys.stderr.write("[ %s ] original barcode had been extracted, output file has been written to: %s\n\n" % (time.asctime(), extract_barcode))
+		elif p == 1:
+			sys.stderr.write("\n... ... step 1 ... ... %s \n\n" % time.asctime())
+			barcoderef = G.Barcode()
+			bracode_aln_parameter = G.Barcode_aln_par()
+			bwa_path = G.Bwa()
+			outfile = inputfile.replace("gz", "sam")
+			sys.stderr.write("[ %s ] align to the barcode set\n" % time.asctime())
+			inputfile = O.bwa_barcode(inputfile, outfile, bwa_path, bracode_aln_parameter, barcoderef)
+			sys.stderr.write("\n[ %s ] align to the barcode set, output sam file has been written to: %s\n" % (time.asctime(), inputfile))
+		elif p == 2:
+			sys.stderr.write("\n... ... step 2 ... ... %s \n\n" % time.asctime())
+			M = modify_barcode()
+			s
