@@ -69,10 +69,6 @@ class baseinfo:
 		abs_path = self.get_path('picard_parameter')
 		return abs_path
 
-	def Dbsnp(self):
-		abs_path = self.get_path('dbsnp')
-		return abs_path
-
 class extract_barcode:
 	def revise(self, rawfq, outdir):
 		if rawfq.endswith('gz'):
@@ -395,6 +391,18 @@ class OUTERSOFT:
 		sys.stderr.write("[ %s ] marked bam file has been written to %s\n" % (time.asctime(), markedbam))
 		return(markedbam)
 
+	def gatk_haplotypecaller(self, bam, outdir, gatk_path, gatk_parameter):
+
+		print >> sys.stderr, "running haplotypecaller starts at %s" % (time.asctime())
+
+		print >> sys.stderr, "running haplotypecaller ends at %s" % (time.asctime())
+
+	def gatk_gvcftovcf(self, gvcf, vcf, gatk_path, gatk_parameter):
+
+		print >> sys.stderr, "converting vcf starts at %s" % (time.asctime())
+
+		print >> sys.stderr, "converting vcf ends at %s" % (time.asctime())
+
 	def phasing(self, vcf, phase_path, phase_parameter):
 
 		print >> sys.stderr, "phasing starts at %s" % (time.asctime())
@@ -439,10 +447,8 @@ if __name__ == '__main__':
 	Sortedsam = None
 	Sortedbam = None
 	Samfilepath = None
-	Markedbam = None
-	Chrlist = None
 
-	opts, args = getopt.gnu_getopt(sys.argv[1:], 'c:f:o:s:S:e:p:M:P:k:L')
+	opts, args = getopt.gnu_getopt(sys.argv[1:], 'c:f:o:s:S:e:p:M:P')
 	for o, a in opts:
 		if o == '-c': configurationFile = a
 		if o == '-f': inputfq = a
@@ -454,8 +460,6 @@ if __name__ == '__main__':
 		if o == '-m': Sortedsam = a
 		if o == '-M': Sortedbam = a
 		if o == '-P': Samfilepath = a
-		if o == '-k': Markedbam = a
-		if o == '-L': Chrlist = a
 
 
 	if configurationFile == None:
@@ -618,54 +622,4 @@ if __name__ == '__main__':
 				sys.exit(-1)
 		elif p == 6:
 			sys.stderr.write("\n... ... stpe 6 ... ... %s \n\n" % time.asctime())
-			if Markedbam == None:
-				sys.stderr.write("\nstep 5 is not finished, please run step 5 again or provide marked bam files unsing '-k'\n\n")
-				sys.exit(-1)
-			elif os.path.exists(Markedbam):
-				pass
-			else:
-				sys.stderr.write("%s is not exists!\n" % (Markedbam))
-				sys.exit(-1)
-
-			if Chrlist == None:
-				sys.stderr.write("\nprovide chr list unsing '-L'\n\n")
-				sys.exit(-1)
-			elif os.path.exists(Chrlist):
-				pass
-			else:
-				sys.stderr.write("%s is not exists!\n" % Chrlist)
-				sys.exists(-1)
-
-			javapath = G.Java()
-			gatkpath = G.Gatk()
-			ref = G.Ref()
-			dbsnp = G.Dbsnp()
-
-			bamdir = os.path.dirname(Markedbam)
-			vcfdir = os.path.join(bamdir, "vcf")
-			if os.path.exists(vcfdir):
-				pass
-			else:
-				os.mkdir(vcfdir)
-
-			shelldir = op.path.join(vcfdir, "shell")
-			if os.path.exists(shelldir):
-				pass
-			else:
-				os.mkdir(vcfdir)
-
-			rChrlist = open(Chrlist, 'r')
-			for ch in rChrlist:
-				ch = ch.strip()
-				chrshell = os.path.join(shelldir, ch + ".vcf.sh")
-				chrgvcf = os.path.join(vcfdir, ch + ".gvcf")
-				chrvcf = os.path.join(vcfdir, ch + ".vcf")
-				wchrshell = open(chrshell, 'w')
-				shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "-T HaplotypeCaller -R", ref, "-I", Markedbam, "-U --emitRefConfidence GVCF --variant_index_type LINEAR --variant_index_parameter 128000 --dbsnp", dbsnp, "-L", ch, "-o", chrgvcf, "\n"])
-				wchrshell.write(shell_line)
-				shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "-T GenotypeGVCFs --variant", chrgvcf, "-o", chrvcf, "--dbsnp", dbsnp, "-allSites -L", ch, "\n"])
-				wchrshell.write(shell_line)
-				wchrshell.close()
-
-				sys.stderr.write("sh %s\n" % chrshell)
-
+			
