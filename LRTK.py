@@ -69,6 +69,14 @@ class baseinfo:
 		abs_path = self.get_path('picard_parameter')
 		return abs_path
 
+	def Barcode_index(self):
+		abs_path = self.get_path('barcode_index')
+		return abs_path
+
+	def Genomesize(self):
+		abs_path = self.get_path('genomesize')
+		return abs_path
+
 	def Dbsnp(self):
 		abs_path = self.get_path('dbsnp')
 		return abs_path
@@ -119,7 +127,7 @@ class extract_barcode:
 					rawfq_str1 = rawfq_str1.decode()
 					rawfq_qua1 = rawfq_qua1.decode()
 
-				barcode_line = rawfq_id1 + rawfq_seq1[0:15] + '\n' + rawfq_str1 + rawfq_qua1[0:15] + "\n"
+				barcode_line = rawfq_id1 + rawfq_seq1[0:16] + '\n' + rawfq_str1 + rawfq_qua1[0:16] + "\n"
 				barcode_out.write(barcode_line.encode())
 
 		barcode_out.close()
@@ -172,7 +180,8 @@ class modify_barcode:
 				if id1[0] != ('@' + barcodeinfo[0]):
 					sys.stderr.write("ERROR - %s and %s do not match!\n" % (id1[0], barcodeinfo[0]))
 				else:
-					(barcode_ori, realbarcodequa) = (list(barcodeinfo[9]), barcodeinfo[10])
+					barcode_ori = list(barcodeinfo[9])
+					realbarcodequa = str(barcodeinfo[10])
 					for md in barcodeinfo[11:]:
 						if md.startswith("MD:Z"):
 							md = re.split(":", md)
@@ -188,11 +197,16 @@ class modify_barcode:
 					realbarcode = "".join(barcode_ori)
 					
 					newfq_seq1 = realbarcode + rawfq_seq1[23:]
+#					rsq = str(rawfq_seq1[24:])
+#					k = "\t".join([str(len(realbarcode)), str(len(rsq)), str(len(newfq_seq1))])
+#					print(k)
 					newfq_qua1 = realbarcodequa + rawfq_qua1[23:]
 					newfq1 = rawfq_id1 + "\n" + newfq_seq1 + "\n" + rawfq_str1 + "\n" + newfq_qua1 + "\n"
 					newfq_seq2 = str(realbarcode) + str(rawfq_seq2)
 					newfq_qua2 = str(realbarcodequa) + str(rawfq_qua2)
 					newfq2 = "\n".join([rawfq_id2, newfq_seq2, rawfq_str2, newfq_qua2, ""])
+#					k = "\t".join([str(len(newfq_seq2)), str(len(newfq_qua2))])
+#					print(k)
 
 					newfq1_out.write(newfq1.encode())
 					newfq2_out.write(newfq2.encode())
@@ -215,6 +229,8 @@ class modify_barcode:
 		o_original_sam = open(original_sam, 'r')
 		o_new_sam = open(new_sam, 'w')
 
+		convert_strand = {"a":"T", "c":"G", "g":"C", "t":"A"}
+
 		while True:
 			saminfo = o_original_sam.readline()
 			if len(saminfo) == 0:
@@ -223,13 +239,29 @@ class modify_barcode:
 				if saminfo.startswith('@'):
 					o_new_sam.write(saminfo)
 				else:
+					saminfo2 = o_original_sam.readline()
 					saminfo = saminfo.strip()
+					saminfo2 = saminfo2.strip()
 					saminfolist = re.split('\t', saminfo)
+					saminfolist2 = re.split('\t', saminfo2)
 					for s in range(len(saminfolist)):
 						if 'BC:Z' in saminfolist[s]:
-							saminfolist[s] = saminfolist[s].upper()
+							if saminfolist[s] != saminfolist2[s]:
+								errinfo = saminfolist[0] + "\t" + saminfolist[s] + "\t" + saminfolist2[s] + "\n"
+								sys.stderr.write("Warning! The barcode of paired reads are not the same: %s\n" % errinfo)
+							BClist = list(saminfolist[s])
+							BClist[1] = "X"
+							for b in range(5,21):
+								if BClist[b].islower():
+									BClist[b] = convert_strand[BClist[b]]
+							BClist[21] = "-1"
+							saminfolist[s] = "".join(BClist[0:22])
+							saminfolist2[s] = saminfolist[s]
+
 					saminfo = "\t".join(saminfolist) + '\n'
 					o_new_sam.write(saminfo)
+					saminfo2 = "\t".join(saminfolist2) + '\n'
+					o_new_sam.write(saminfo2)
 
 		o_original_sam.close()
 		o_new_sam.close()
@@ -242,7 +274,7 @@ class modify_barcode:
 		oshell.write(shell_line)
 		shell_line = " ".join([samtools_path, "view -h", sorted_bam + '.bam > ', sorted_bam + '.sam\n'])
 		oshell.write(shell_line)
-		shell_line = " ".join(["rm", original_sam, new_sam, new_bam, sorted_bam + '.sam', "\n"])
+		shell_line = " ".join(["#rm", original_sam, new_sam, new_bam, sorted_bam + '.sam', "\n"])
 		oshell.write(shell_line)
 		oshell.close()
 
@@ -250,12 +282,12 @@ class modify_barcode:
 		return(sorted_bam + '.bam', sorted_bam + '.sam')
 
 class CFCR:
-	def split_and_sort_sam(self, sorted_bam, outdir = './'):
+	def split_and_sort_sam(self, sorted_bam, samtools_path, barcode_index, outdir = './'):
 		splitdir = os.path.join(outdir, "SamByChr")
 		if os.path.exists(splitdir):
 			pass
 		else:
-			os.path.mkdir(splitdir)
+			os.mkdir(splitdir)
 
 		sorted_sam = sorted_bam.replace('bam', 'sam')
 		tmpshell = os.path.join(splitdir, "bam2sam.sh")
@@ -263,6 +295,7 @@ class CFCR:
 		shell_line = " ".join([samtools_path, "view -h", sorted_bam, ">", sorted_sam, "\n"])
 		wtmpshell.write(shell_line)
 		wtmpshell.close()
+		subprocess.call(["sh", tmpshell])
 
 		chrdict = dict()
 		splitsamlist = list()
@@ -280,6 +313,7 @@ class CFCR:
 					issort = 1
 				outputsam.write(saminfo)
 			else:
+				saminfo = saminfo.strip()
 				saminfolist = re.split("\t", saminfo)
 				if saminfolist[2] == '*':
 					pass
@@ -292,8 +326,11 @@ class CFCR:
 					outputsam = open(chrsam, 'w')
 					splitsamlist.append(chrsam)
 					sys.stderr.write("[ %s ] split sorted sam file, processing %s: %s ...\n" % (time.asctime(), saminfolist[2], chrsam))
+					### move the barcode info to the 12th column
+					saminfo = self.modify_saminfo(saminfo)
 					outputsam.write(saminfo)
 				else:
+					saminfo = self.modify_saminfo(saminfo)
 					outputsam.write(saminfo)
 		outputsam.close()
 
@@ -302,24 +339,55 @@ class CFCR:
 		for chrsam in splitsamlist:
 			chrsortedsam = chrsam.replace('sam', 'sorted_by_barcode.sam')
 			sys.stderr.write("[ %s ] sort sam file, processing %s ...\n" % (time.asctime(), chrsortedsam))
-			subprocess.call(["sort -k12", chrsam, ">", chrsortedsam])
-			subprocess.call(["rm", chrsam])
+			tmpshell = os.path.join(splitdir, "sort.sh")
+			wtmpshell = open(tmpshell, "w")
+			shell_line = " ".join(["sort", "-k12", chrsam, ">", chrsortedsam, "\n"])
+			wtmpshell.write(shell_line)
+			shell_line = " ".join(["rm", chrsam, "\n"])
+			wtmpshell.write(shell_line)
+			wtmpshell.close()
+			subprocess.call(["sh", tmpshell])
 			wsamfilepath.write("\n".join([chrsortedsam, ""]))
 		wsamfilepath.close()
-		return(wsamfilepath)
+		return(samfilepath)
 
-	def calculate(self, sorted_by_barcode_sam_list, outdir = './'):
-		samfile_list = open(sorted_by_barcode_sam, 'r')
+	def modify_saminfo(self, orisaminfo):
+		saminfolist = re.split("\t", orisaminfo)
+		bcindex = 1
+		for n in range(len(saminfolist)):
+			if saminfolist[n].startswith("BX:Z"):
+				bcindex = n
+		if bcindex == 11 or bcindex == 1:
+			saminfo = "\t".join(saminfolist)
+		else:
+			newsaminfolist = saminfolist[0:11]
+			newsaminfolist.append(saminfolist[bcindex])
+			for n in range(11, bcindex):
+				newsaminfolist.append(saminfolist[n])
+			if bcindex == (len(saminfolist) - 1):
+				pass
+			else:
+				for n in range(bcindex+1, len(saminfolist)):
+					newsaminfolist.append(saminfolist[n])
+			saminfo = "\t".join(newsaminfolist)
+		saminfo = saminfo + "\n"
+		return(saminfo)
+
+	def calculate(self, sorted_by_barcode_sam_list, target_size, outdir = './'):
+		samfile_list = open(sorted_by_barcode_sam_list, 'r')
 		marked_molecule = os.path.join(outdir, "molecule.txt")
 		wmarked_molecule = open(marked_molecule, 'w')
 		allbarcode = dict()
-		mol_id = 1
+		mol_id = 0
+		barid = None
+		all_CF = 0
+		all_CR = 0
 		for sam in samfile_list:
 			sam = sam.strip()
 			samfile = open(sam, 'r')
 			while True:
 				saminfo = samfile.readline().strip()
-				saminfolist = re.split("\t", samfile)
+				saminfolist = re.split("\t", saminfo)
 
 				if len(saminfo) == 0:
 					break
@@ -327,88 +395,119 @@ class CFCR:
 					pass
 
 				for bc in saminfolist[11:]:
-					if bc.startswith("BC"):
+					if bc.startswith("BX"):
+						barid = bc
 						if bc not in allbarcode:
 							if len(allbarcode) == 0:
 								pass
 							else:
-								mol_id = self.FR.(allbarcode[-1], mol_id, wmarked_molecule)
+								onekey = sorted(allbarcode)
+#								print(allbarcode[onekey[0]])
+								(mol_id, all_CF, all_CR) = self.FR(allbarcode[onekey[0]], mol_id, wmarked_molecule, barid, all_CF, all_CR)
 								allbarcode = dict()
 							allbarcode[bc] = saminfo
 						else:
 							allbarcode[bc] = allbarcode[bc] + "\n" + saminfo
 			samfile.close()
-		mol_id = self.FR.(allbarcode[-1], mol_id, wmarked_molecule)
+			onekey = sorted(allbarcode)
+		if len(onekey) > 0:
+			(mol_id, all_CF, all_CR) = self.FR(allbarcode[onekey[0]], mol_id, wmarked_molecule, barid, all_CF, all_CR)
 		wmarked_molecule.close()
 
-	def FR(self, barcodeinfo, molecule_id, writemarker):
+		cfcr_stat_file = os.path.join(outdir, "CFCR.stat")
+		wcfcr_stat_file = open(cfcr_stat_file, 'w')
+		stat_line = "Item" + "\t" + "CF/CR length" + "\t" + "genome_size" + "\t" + "CF/CR depth\n"
+		wcfcr_stat_file.write(stat_line)
+		target_size = int(target_size)
+		CF_depth = all_CF / target_size
+		CR_depth = all_CR / target_size
+		stat_line = "CF:" + "\t" + str(all_CF) + "\t" + str(target_size) + "\t" + str(CF_depth) + "\n"
+		wcfcr_stat_file.write(stat_line)
+		stat_line = "CR:" + "\t" + str(all_CR) + "\t" + str(target_size) + "\t" + str(CR_depth) + "\n"
+		wcfcr_stat_file.write(stat_line)
+		wcfcr_stat_file.close()
+		return(cfcr_stat_file)
+
+	def FR(self, barcodeinfo, molecule_id, writemarker, barcodeid, cf, cr):
 		readid = dict()
 		onebarcodelist = re.split("\n", barcodeinfo)
 		for onebarcode in onebarcodelist:
 			eachlist = re.split("\t", onebarcode)
-			(eachid, chr_id, start, readlength) = eachlist[0, 2, 3, 5]
-			readlength = int(readlength.strip())
+			eachid = eachlist[0]
+			chr_id = eachlist[2]
+			start = eachlist[3]
+			readlength = len(eachlist[9])
 			start = int(start)
 			end = start + readlength - 1
 			reads = onebarcode
 			### merge pair-end reads into single fragment
 			if eachid not in readid:
-				readid[eachid] = [chr_id, start, end, idinfo]
+				readid[eachid] = [chr_id, start, end, onebarcode]
+				cr = cr + readlength
 			else:
 				if readid[eachid][0] != chr_id:
 					sys.stderr.write("%s pair-end reads mapped to different chromosom, would be ignored.\n" % eachid)
 					readid.pop(eachid)
+					cr = cr - readlength
 				else:
 					start = min(readid[eachid][1], start)
 					end = max(readid[eachid][2], end)
 					dis = end - start + 1
+					cr = cr + readlength
 					if dis > 10000:
 						sys.stderr.write("%s fragment length > 10kb, would be ignored.\n" % eachid)
 						readid.pop(eachid)
 					else:
-						reads = reads + "\n" + onebarcode
+						reads = readid[eachid][3] + "\n" + reads
 						readid[eachid] = [chr_id, start, end, reads]
 
 		molecule = dict()
 		s = int(molecule_id) + 1
 		molecule_id = int(molecule_id) + 1
 		e = s + 1
-		for key, value in readid:
+		for key in readid:
+			value = readid[key]
 			if molecule_id not in molecule:
-				molecule[molecule_id]["chrid"] = value[0]
-				molecule[molecule_id]["start"] = value[1]
-				molecule[molecule_id]["end"] = value[2]
-				molecule[molecule_id]["reads"] = value[3]
+				molecule[molecule_id] = list()
+				molecule[molecule_id].append(value[0])	## chr id
+				molecule[molecule_id].append(value[1])  ## start
+				molecule[molecule_id].append(value[2])  ## end
+				molecule[molecule_id].append(value[3])  ## reads info
 			else:
 				isnew = 1
 				for i in range(s, e):
 					if isnew == 0:
 						pass
 					else:
-						if molecule[i]["chrid"] == value[0]:
-							dist = molecule[i]["start"] - value[1]
+						if molecule[i][0] == value[0]:
+							dist = molecule[i][1] - value[1]
 							if dist < 50000:
 								isnew = 0
-								molecule[i]["start"] = min(molecule[i]["start"], value[1])
-								molecule[i]["end"] = max(molecule[i]["end"], value[2])
-								molecule[i]["reads"] = molecule[i]["reads"] + "\n" + value[3]
+								molecule[i][1] = min(molecule[i][1], value[1])
+								molecule[i][2] = max(molecule[i][2], value[2])
+								molecule[i][3] = molecule[i][3] + "\n" + value[3]
 				if isnew == 1:
 					molecule_id = molecule_id + 1
-					molecule[molecule_id]["chrid"] = value[0]
-					molecule[molecule_id]["start"] = value[1]
-					molecule[molecule_id]["end"] = value[2]
-					molecule[molecule_id]["reads"] = value[3]
+					molecule[molecule_id] = list()
+					molecule[molecule_id].append(value[0])
+					molecule[molecule_id].append(value[1])
+					molecule[molecule_id].append(value[2])
+					molecule[molecule_id].append(value[3])
+#					molecule[molecule_id]["chrid"] = value[0]
+#					molecule[molecule_id]["start"] = value[1]
+#					molecule[molecule_id]["end"] = value[2]
+#					molecule[molecule_id]["reads"] = value[3]
 					s = s + 1
 
 		for i in range(s, e):
-			readlist = re.split("\n", molecule[i]["reads"])
+#			readlist = re.split("\n", molecule[i]["reads"])
+			readlist = re.split("\n", molecule[i][3])
+			cf = cf + molecule[i][2] - molecule[i][1] + 1
 			for rl in readlist:
-				outinfo = i + "\t" + rl + "\n"
+				outinfo = str(i) + "\t" + barcodeid + "\t" + rl + "\n"
 				writemarker.write(outinfo)
 
-		return(molecule_id)
-
-		
+		return(molecule_id, cf, cr)
 
 class OUTERSOFT:
 	def bwa_barcode(self, barcode, barcode_sam, bwa_path, bwa_parameter, ref_path):
@@ -465,8 +564,9 @@ class OUTERSOFT:
 			sys.stderr.write("bai not found, will produce bai file for bam automatically: %s\n" % bai)
 			tmpshell = bai + '.sh'
 			wtmpshell = open(tmpshell, 'w')
-			shell_line = " ".join([java_path, '-jar', picard_path, 'BamIndexStats', "I=" + oribam, "O=" + bai, "\n"])
+			shell_line = " ".join([java_path, '-jar', picard_path, 'BuildBamIndex', "I=" + oribam, "O=" + bai, "\n"])
 			wtmpshell.write(shell_line)
+			print(shell_line)
 			wtmpshell.close()
 			subprocess.call(["sh", tmpshell])
 			subprocess.call(["rm", tmpshell])
@@ -538,7 +638,6 @@ if __name__ == '__main__':
 		if o == '-S': step = a
 		if o == '-e': extract_barcode = a
 		if o == '-p': newprefix = a
-		if o == '-m': Sortedsam = a
 		if o == '-M': Sortedbam = a
 		if o == '-P': Samfilepath = a
 		if o == '-k': Markedbam = a
@@ -581,7 +680,7 @@ if __name__ == '__main__':
 	G.get_config(configurationFile)
 
 	for p in _process_:
-		if p == 0:
+		if p == 0:		### extract barcode info from original fq file
 			sys.stderr.write("\n... ... step 0 ... ... %s \n\n" % time.asctime())
 			if os.path.exists(inputfq):
 				pass
@@ -593,7 +692,7 @@ if __name__ == '__main__':
 			sys.stderr.write("[ %s ] extract original barcode info from %s\n" % (time.asctime(), inputfq))
 			extract_barcode = R.revise(inputfq, outputDir)
 			sys.stderr.write("[ %s ] original barcode had been extracted, output file has been written to: %s\n\n" % (time.asctime(), extract_barcode))
-		elif p == 1:
+		elif p == 1:	## align to the barcode set, modify the barcode sequence in the raw fq file
 			sys.stderr.write("\n... ... step 1 ... ... %s \n\n" % time.asctime())
 			if os.path.exists(extract_barcode):
 				pass
@@ -689,23 +788,26 @@ if __name__ == '__main__':
 				sys.exit(-1)
 		elif p == 5:
 			sys.stderr.write("\n... ... step 5 ... ... %s \n\n" % time.asctime())
-			if Sortedbam == None:
+			if Markedbam == None:
 				sys.stderr.write("\nstep 4 is not finished, please run step 4 again or provide marked bam file unsing '-k'\n\n")
 				sys.exit(-1)
-			elif os.path.exists(Sortedbam):
+			elif os.path.exists(Markedbam):
 				pass
 			else:
-				sys.stderr.write("%s is not exists!\n" % (Sortedbam))
+				sys.stderr.write("%s is not exists!\n" % (Markedbam))
 				sys.exit(-1)
-			
+		
+			samtools_path = G.Samtools()
+			barcode_index = G.Barcode_index()
+			genomesize = G.Genomesize()
 			C = CFCR()
-			samdir = os.path.dirname(Sortedbam)
+			samdir = os.path.dirname(Markedbam)
 			sys.stderr.write("[ %s ] split sam file by chr, sort sam file by barcode ... \n" % time.asctime())
-			Samfilepath = C.split_and_sort_sam(Sortedbam, samdir)
+			Samfilepath = C.split_and_sort_sam(Markedbam, samtools_path, barcode_index, samdir)
 			sys.stderr.write("[ %s ] splited and sorted sam file list: %s \n\n" % (time.asctime(), Samfilepath))
 
 			sys.stderr.write("[ %s ] calculating CF/CR ... \n" % time.asctime())
-			stattxt = C.calculate(Samfilepath, samdir)
+			stattxt = C.calculate(Samfilepath, genomesize, samdir)
 			sys.stderr.write("[ %s ] CF/CR has been written to %s \n" % (time.asctime(), stattxt))
 		elif p == 6:
 			sys.stderr.write("\n... ... stpe 6 ... ... %s \n\n" % time.asctime())
