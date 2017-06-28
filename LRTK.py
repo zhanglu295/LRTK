@@ -27,11 +27,14 @@ class baseinfo:
 		o_config.close()
 
 	def get_path(self, name_variable):
-		ABS_PATH = self.configdist[name_variable]
-		if ABS_PATH is None:
-			print >> sys.stderr, "ERROR - %s - %s is empty!" % (time.asctime(), name_variable)
+		if name_variable in self.configdist:
+			ABS_PATH = self.configdist[name_variable]
+			if ABS_PATH == "None":
+				ABS_PATH = " "
+			return ABS_PATH
+		else:
+			sys.stderr.write("ERROR - %s - %s is empty, please check the config file you inputted!\n" % (time.asctime(), name_variable))
 			sys.exit(-1)
-		return ABS_PATH
 
 	def Ref(self):
 		abs_path = self.get_path('ref')
@@ -40,7 +43,11 @@ class baseinfo:
 	def Fq_aln_par(self):
 		abs_path = self.get_path('fq_aln_parameter')
 		return abs_path
-	
+
+	def Fq_sam_par(self):
+		abs_path = self.get_path('fq_sampe_parameter')
+		return abs_path
+
 	def Bwa(self):
 		abs_path = self.get_path('bwa')
 		return abs_path
@@ -51,6 +58,10 @@ class baseinfo:
 
 	def Barcode_aln_par(self):
 		abs_path = self.get_path('barcode_aln_parameter')
+		return abs_path
+
+	def RG_info(self):
+		abs_path = self.get_path('RG')
 		return abs_path
 
 	def Samtools(self):
@@ -80,6 +91,31 @@ class baseinfo:
 	def Dbsnp(self):
 		abs_path = self.get_path('dbsnp')
 		return abs_path
+
+	def Gatk(self):
+		abs_path = self.get_path('gatk')
+		return abs_path
+
+	def HaplotypeCaller(self):
+		abs_path = self.get_path('HaplotypeCaller_par')
+		return abs_path
+	
+	def GenotypeGVCFs(self):
+		abs_path = self.get_path('GenotypeGVCFs_par')
+		return abs_path
+
+	def HapCut(self):
+		abs_path = self.get_path('HapCut')
+		return abs_path
+
+	def Fgbio(self):
+		abs_path = self.get_path('fgbio')
+		return abs_path
+
+	def HapCut_par(self):
+		abs_path = self.get_path('HapCut_par')
+		return abs_path
+
 
 class extract_barcode:
 	def revise(self, rawfq, outdir):
@@ -182,6 +218,10 @@ class modify_barcode:
 				else:
 					barcode_ori = list(barcodeinfo[9])
 					realbarcodequa = str(barcodeinfo[10])
+					barcode_err = 0
+					if barcodeinfo[2] == "*" or re.search('N', barcodeinfo[9]):
+						barcode_err = 1
+						continue
 					for md in barcodeinfo[11:]:
 						if md.startswith("MD:Z"):
 							md = re.split(":", md)
@@ -189,27 +229,30 @@ class modify_barcode:
 							loci = re.findall(r'\d+', md[-1])
 							if len(alter) == 0:
 								pass
+							elif len(alter) > 1:
+								barcode_err = 1
 							else:
 								for i in range(len(alter)):
 									ix = int(loci[i]) + i
 									barcode_ori[ix] = alter[i]
 
-					realbarcode = "".join(barcode_ori)
+					if barcode_err == 0:
+						realbarcode = "".join(barcode_ori)
 					
-					newfq_seq1 = realbarcode + rawfq_seq1[23:]
+						newfq_seq1 = realbarcode + rawfq_seq1[23:]
 #					rsq = str(rawfq_seq1[24:])
 #					k = "\t".join([str(len(realbarcode)), str(len(rsq)), str(len(newfq_seq1))])
 #					print(k)
-					newfq_qua1 = realbarcodequa + rawfq_qua1[23:]
-					newfq1 = rawfq_id1 + "\n" + newfq_seq1 + "\n" + rawfq_str1 + "\n" + newfq_qua1 + "\n"
-					newfq_seq2 = str(realbarcode) + str(rawfq_seq2)
-					newfq_qua2 = str(realbarcodequa) + str(rawfq_qua2)
-					newfq2 = "\n".join([rawfq_id2, newfq_seq2, rawfq_str2, newfq_qua2, ""])
+						newfq_qua1 = realbarcodequa + rawfq_qua1[23:]
+						newfq1 = rawfq_id1 + "\n" + newfq_seq1 + "\n" + rawfq_str1 + "\n" + newfq_qua1 + "\n"
+						newfq_seq2 = str(realbarcode) + str(rawfq_seq2)
+						newfq_qua2 = str(realbarcodequa) + str(rawfq_qua2)
+						newfq2 = "\n".join([rawfq_id2, newfq_seq2, rawfq_str2, newfq_qua2, ""])
 #					k = "\t".join([str(len(newfq_seq2)), str(len(newfq_qua2))])
 #					print(k)
 
-					newfq1_out.write(newfq1.encode())
-					newfq2_out.write(newfq2.encode())
+						newfq1_out.write(newfq1.encode())
+						newfq2_out.write(newfq2.encode())
 
 		newfq1_out.close()
 		newfq2_out.close()
@@ -244,8 +287,11 @@ class modify_barcode:
 					saminfo2 = saminfo2.strip()
 					saminfolist = re.split('\t', saminfo)
 					saminfolist2 = re.split('\t', saminfo2)
+					N_info = 0
 					for s in range(len(saminfolist)):
 						if 'BC:Z' in saminfolist[s]:
+							if re.search('N', saminfolist[s], re.IGNORECASE):
+								N_info = 1
 							if saminfolist[s] != saminfolist2[s]:
 								errinfo = saminfolist[0] + "\t" + saminfolist[s] + "\t" + saminfolist2[s] + "\n"
 								sys.stderr.write("Warning! The barcode of paired reads are not the same: %s\n" % errinfo)
@@ -258,10 +304,11 @@ class modify_barcode:
 							saminfolist[s] = "".join(BClist[0:22])
 							saminfolist2[s] = saminfolist[s]
 
-					saminfo = "\t".join(saminfolist) + '\n'
-					o_new_sam.write(saminfo)
-					saminfo2 = "\t".join(saminfolist2) + '\n'
-					o_new_sam.write(saminfo2)
+					if N_info == 0:
+						saminfo = "\t".join(saminfolist) + '\n'
+						o_new_sam.write(saminfo)
+						saminfo2 = "\t".join(saminfolist2) + '\n'
+						o_new_sam.write(saminfo2)
 
 		o_original_sam.close()
 		o_new_sam.close()
@@ -272,9 +319,9 @@ class modify_barcode:
 		oshell.write(shell_line)
 		shell_line = " ".join([samtools_path, "sort -m 1G", new_bam, sorted_bam, "\n"])
 		oshell.write(shell_line)
-		shell_line = " ".join([samtools_path, "view -h", sorted_bam + '.bam > ', sorted_bam + '.sam\n'])
-		oshell.write(shell_line)
-		shell_line = " ".join(["#rm", original_sam, new_sam, new_bam, sorted_bam + '.sam', "\n"])
+#		shell_line = " ".join([samtools_path, "view -h", sorted_bam + '.bam > ', sorted_bam + '.sam\n'])
+#		oshell.write(shell_line)
+		shell_line = " ".join(["#rm", original_sam, new_sam, new_bam, "\n"])
 		oshell.write(shell_line)
 		oshell.close()
 
@@ -302,7 +349,6 @@ class CFCR:
 		headersam = os.path.join(splitdir, 'header.sam')
 		outputsam = open(headersam, 'w')
 		rsorted_sam = open(sorted_sam, 'r')
-
 		issort = None
 		while True:
 			saminfo = rsorted_sam.readline()
@@ -333,7 +379,7 @@ class CFCR:
 					saminfo = self.modify_saminfo(saminfo)
 					outputsam.write(saminfo)
 		outputsam.close()
-
+		
 		samfilepath = os.path.join(splitdir, "sam.txt")
 		wsamfilepath = open(samfilepath, 'w')
 		for chrsam in splitsamlist:
@@ -375,8 +421,8 @@ class CFCR:
 
 	def calculate(self, sorted_by_barcode_sam_list, target_size, outdir = './'):
 		samfile_list = open(sorted_by_barcode_sam_list, 'r')
-		marked_molecule = os.path.join(outdir, "molecule.txt")
-		wmarked_molecule = open(marked_molecule, 'w')
+		marked_molecule = os.path.join(outdir, "molecule.txt.gz")
+		wmarked_molecule = gzip.open(marked_molecule, 'wb')
 		allbarcode = dict()
 		mol_id = 0
 		barid = None
@@ -384,6 +430,7 @@ class CFCR:
 		all_CR = 0
 		for sam in samfile_list:
 			sam = sam.strip()
+			sys.stderr.write("[ %s ] processing: %s \n" %(time.asctime(), sam))
 			samfile = open(sam, 'r')
 			while True:
 				saminfo = samfile.readline().strip()
@@ -391,23 +438,24 @@ class CFCR:
 
 				if len(saminfo) == 0:
 					break
-				elif saminfolist[8] == 0:
+				elif saminfolist[5] == "*":
+#					sys.stderr.write("%s : unmapped reads would be ignored!\n" % saminfolist[0])
 					pass
-
-				for bc in saminfolist[11:]:
-					if bc.startswith("BX"):
-						barid = bc
-						if bc not in allbarcode:
-							if len(allbarcode) == 0:
-								pass
-							else:
-								onekey = sorted(allbarcode)
+				else:
+					for bc in saminfolist[11:]:
+						if bc.startswith("BX"):
+							barid = bc
+							if bc not in allbarcode:
+								if len(allbarcode) == 0:
+									pass
+								else:
+									onekey = sorted(allbarcode)
 #								print(allbarcode[onekey[0]])
-								(mol_id, all_CF, all_CR) = self.FR(allbarcode[onekey[0]], mol_id, wmarked_molecule, barid, all_CF, all_CR)
-								allbarcode = dict()
-							allbarcode[bc] = saminfo
-						else:
-							allbarcode[bc] = allbarcode[bc] + "\n" + saminfo
+									(mol_id, all_CF, all_CR) = self.FR(allbarcode[onekey[0]], mol_id, wmarked_molecule, barid, all_CF, all_CR)
+									allbarcode = dict()
+								allbarcode[bc] = saminfo
+							else:
+								allbarcode[bc] = allbarcode[bc] + "\n" + saminfo
 			samfile.close()
 			onekey = sorted(allbarcode)
 		if len(onekey) > 0:
@@ -446,7 +494,7 @@ class CFCR:
 				cr = cr + readlength
 			else:
 				if readid[eachid][0] != chr_id:
-					sys.stderr.write("%s pair-end reads mapped to different chromosom, would be ignored.\n" % eachid)
+#					sys.stderr.write("%s pair-end reads mapped to different chromosom, would be ignored.\n" % eachid)
 					readid.pop(eachid)
 					cr = cr - readlength
 				else:
@@ -455,7 +503,7 @@ class CFCR:
 					dis = end - start + 1
 					cr = cr + readlength
 					if dis > 10000:
-						sys.stderr.write("%s fragment length > 10kb, would be ignored.\n" % eachid)
+#						sys.stderr.write("%s fragment length > 10kb, would be ignored.\n" % eachid)
 						readid.pop(eachid)
 					else:
 						reads = readid[eachid][3] + "\n" + reads
@@ -501,11 +549,13 @@ class CFCR:
 
 		for i in range(s, e):
 #			readlist = re.split("\n", molecule[i]["reads"])
-			readlist = re.split("\n", molecule[i][3])
-			cf = cf + molecule[i][2] - molecule[i][1] + 1
-			for rl in readlist:
-				outinfo = str(i) + "\t" + barcodeid + "\t" + rl + "\n"
-				writemarker.write(outinfo)
+			if i in molecule:
+#				print(molecule[i][3])
+				readlist = re.split("\n", molecule[i][3])
+				cf = cf + molecule[i][2] - molecule[i][1] + 1
+				for rl in readlist:
+					outinfo = str(i) + "\t" + barcodeid + "\t" + rl + "\n"
+					writemarker.write(outinfo.encode())
 
 		return(molecule_id, cf, cr)
 
@@ -524,28 +574,29 @@ class OUTERSOFT:
 		subprocess.call(["sh", shell])
 		return(barcode_sam)
 
-	def bwa_fq(self, fq1, fq2, outprefix, bwa_path, bwa_parameter):
+	def bwa_fq(self, fq1, fq2, outprefix, bwa_path, bwa_aln_parameter, bwa_sam_parameter, RGinfo):
 		sai1 = outprefix + '.1.sai'
 		sai2 = outprefix + '.2.sai'
-		outbam = outprefix + '.sam'
+		outsam = outprefix + '.sam'
 		
 		sys.stderr.write("[ %s ] fq alignment starts\n" % (time.asctime()))
 		outdir = os.path.dirname(fq1)
 		shell = os.path.join(outdir, "fq.aln.sh")
 		oshell = open(shell, 'w')
-		shell_line = " ".join([bwa_path, 'aln', ref_path, fq1, bwa_parameter, '-f', sai1, '&\n'])
+		shell_line = " ".join([bwa_path, 'aln', ref_path, fq1, bwa_aln_parameter, '-f', sai1, '&\n'])
 		oshell.write(shell_line)
-		shell_line = " ".join([bwa_path, 'aln', ref_path, fq2, bwa_parameter, '-f', sai2, '&\nwait\n'])
+		shell_line = " ".join([bwa_path, 'aln', ref_path, fq2, bwa_aln_parameter, '-f', sai2, '&\nwait\n'])
 		oshell.write(shell_line)
 		#shell_line = " ".join([bwa_path, 'sampe', ref_path, sai1, sai2, fq1, fq2, "|", samtools_path + ' view -h -S -b - > ' + outbam + "\n"])
-		shell_line = " ".join([bwa_path, 'sampe', ref_path, sai1, sai2, fq1, fq2, ">", outbam + "\nrm", sai1, sai2, "\n"])
+		RGinfo = '"' + RGinfo + '"'
+		shell_line = " ".join([bwa_path, 'sampe', bwa_sam_parameter, '-r', RGinfo, ref_path, sai1, sai2, fq1, fq2, ">", outsam + "\nrm", sai1, sai2, "\n"])
 		oshell.write(shell_line)
 		oshell.close()
 		print(shell)
 
 		subprocess.call(["sh", shell])
 		sys.stderr.write("[ %s ] fq alignment finish\n" % (time.asctime()))
-		return(outbam)
+		return(outsam)
 
 	def picard_markdup(self, oribam, markedbam, java_path, picard_path, picard_paramter):
 		metrics = markedbam.replace('bam', 'metrics.txt')
@@ -588,38 +639,164 @@ class OUTERSOFT:
 
 		print >> sys.stderr, "phasing ends at %s" % (time.asctime())
 
-def LRTK_usage():
-	usage = \
+def LRTK_usage(_Command_):
+	helpinfo = dict()
+
+	usage_all = \
 	'''
+
 	A pipeline to run 10x data
 	Version: 0.01
+	Depends: python (>=3.0), bwa, picard (>=2.9), java (>=1.8), samtools, gatk (>= 3.0)
 	Date: 2017-06-01
-	Author: meijp@foxmail.com
-	Usage: python LRTK.py -i config.txt
+	Contact: meijp@foxmail.com
+
+	Usage: python LRTK.py <command> [options]
+
+	Command:
+			all	run the whole pipeline
+			pre	prepare fastq files for alignment, including step 0, 1 and 2
+			aln	alignment, including step 3 and 4
+			cal	calculation, including step 5 and 6
+			var	variation call, including step 7
+			pha	phasing, including step 8
+
+	Note: To use LRTK, you need to first prepare configuration file.
+
+	'''
+	helpinfo["N"] = usage_all
+
+	all_options = \
+	'''
+	
+	Depends: python (>=3.0), bwa, picard (>=2.9), java (>=1.8), samtools, gatk (>= 3.0)
+	Usage: python LRTK.py all [options]
 
 	Options:
 		-c configure file
-		-i input fq, compressed and uncompressed fastq files are both availabe
+		-f fq, compressed and uncompressed fastq files are both available.
+		-o output dir
+		-s alignment result of barcode sequences in fq files, only sam file is available.
+		-e barcode sequences extracted from raw fq file, standard fastq format.
+		-p prefix of barcode modified fq file, prefix_1.fq.gz and prefix_2.fq.gz must be available.
+		-M sorted bam file
+		-P file list of sam files that sorted by barcode
+		-k duplication marked bam file
+		-L list of chromosomes that would call variations
+		-u unphased vcf
+		-S steps you want to run[default: 0-]. Only single number(0~8), single number with '-'(0~8-), and two numbers seperated by '-'(0-8) are available
+			eg. -S 1  :	run step 1 only
+				-S 0- :	run steps from 0 to 8
+				-S 3-5:	run steps from 3 to 5
+			step 0: extract barcode sequences from raw fq file
+			step 1: map to the full barcode set, input: fastq file produced in stpe 0
+			step 2: modify barcode info based on the result of step 1
+			step 3: map to the whole genome, input: paired fastq files produced in step 2
+			step 4: sort and markduplication, input: bam file produced in step 3
+			step 5: split (by chromosome) and sort (by barcode) the bam file, input: bam file produced in step 4
+			step 6: calculate CF and CR, input: file list of sam files that sorted by barcode
+			step 7: variant call, using GATK, input: bam file produced in step 4
+			step 8: phase
+
+	'''
+	helpinfo["all"] = all_options
+
+	pre_options = \
+	'''
+
+	Depends: python (>=3.0), bwa
+	Usage: python LRTK.py pre [options]
+
+	Options:
+		-c configure file
+		-f fq, compressed and uncompressed fastq files are both available.
 		-o output dir
 
 	'''
-	print (usage)
+	helpinfo["pre"] = pre_options
+
+	aln_options = \
+	'''
+
+	Depends: python (>=3.0), bwa, picard (>=2.9), samtools, java (>=1.8)
+	Usage: python LRTK.py aln [options]
+
+	Options:
+		-c configure file
+		-p prefix of barcode modified fq file, prefix_1.fq.gz and prefix_2.fq.gz must be available.
+		-o output dir
+
+	'''
+	helpinfo["aln"] = aln_options
+
+	cal_options = \
+	'''
+
+	Depends: python (>=3.0), samtools
+	Usage: python LRTK.py cal [options]
+
+	Options:
+		-c configure file
+		-k duplication marked bam file
+		-o output dir
+
+	'''
+	helpinfo["cal"] = cal_options
+
+	var_options = \
+	'''
+	
+	Depends: python (>=3.0), java (>=1.8), GATK (>=3.0)
+	Usage: python LRTK.py var [options]
+
+	Options:
+		-c configure file
+		-k duplication marked bam file
+		-L list of chromosomes that would call variations
+		-t number of jobs running concurrently when calling variations[default: 3]
+		-o output dir
+
+	'''
+	helpinfo["var"] = var_options
+
+	pha_options = \
+	'''
+
+	Depends: python (>=3.0), HapCut
+	Usage: python LRTK.py pha [options]
+
+	Options:
+		-c configure file
+		-k duplication marked bam file
+		-u unphased vcf
+		-o output dir
+
+	'''
+	helpinfo["pha"] = pha_options
+
+	if _Command_ in helpinfo:
+		print (helpinfo[_Command_])
+	else:
+		print (helpinfo["N"])
 	sys.exit(1)
 
-if __name__ == '__main__':
-	if len(sys.argv) <= 1:
-		LRTK_usage()
+def isset(v):
+	try:
+		type(eval(v))
+	except:
+		return 0
+	else:
+		return 1
 
-	def isset(v):
-		try:
-			type(eval(v))
-		except:
-			return 0
-		else:
-			return 1
+if __name__ == '__main__':
+	if len(sys.argv) == 1:
+		LRTK_usage("N")
+	elif len(sys.argv) == 2:
+		LRTK_usage(sys.argv[1])
 
 	configurationFile = None
 	step = '0-'
+	outputDir = './'
 	inputfq = None
 	newprefix = None
 	barcodesam = None
@@ -628,8 +805,10 @@ if __name__ == '__main__':
 	Samfilepath = None
 	Markedbam = None
 	Chrlist = None
+	UnphaseVcf = None
+	ParallelNum = 3
 
-	opts, args = getopt.gnu_getopt(sys.argv[1:], 'c:f:o:s:S:e:p:M:P:k:L')
+	opts, args = getopt.gnu_getopt(sys.argv[2:], 'c:f:o:s:S:e:p:M:P:k:L:u:t:')
 	for o, a in opts:
 		if o == '-c': configurationFile = a
 		if o == '-f': inputfq = a
@@ -642,6 +821,8 @@ if __name__ == '__main__':
 		if o == '-P': Samfilepath = a
 		if o == '-k': Markedbam = a
 		if o == '-L': Chrlist = a
+		if o == '-u': UnphaseVcf = a
+		if o == '-t': ParallelNum = a
 
 
 	if configurationFile == None:
@@ -679,186 +860,306 @@ if __name__ == '__main__':
 	G = baseinfo()
 	G.get_config(configurationFile)
 
-	for p in _process_:
-		if p == 0:		### extract barcode info from original fq file
-			sys.stderr.write("\n... ... step 0 ... ... %s \n\n" % time.asctime())
-			if os.path.exists(inputfq):
-				pass
-			else:
-				sys.stderr.write("input fq not found!\n")
-				sys.exit(-1)
+	if sys.argv[1] == "pre" or (sys.argv[1] == "all" and 0 in _process_):		### extract barcode info from original fq file
+		sys.stderr.write("\n... ... step 0 ... ... %s \n\n" % time.asctime())
+		if os.path.exists(inputfq):
+			pass
+		else:
+			sys.stderr.write("input fq not found!\n")
+			sys.exit(-1)
 
-			R = extract_barcode()
-			sys.stderr.write("[ %s ] extract original barcode info from %s\n" % (time.asctime(), inputfq))
-			extract_barcode = R.revise(inputfq, outputDir)
-			sys.stderr.write("[ %s ] original barcode had been extracted, output file has been written to: %s\n\n" % (time.asctime(), extract_barcode))
-		elif p == 1:	## align to the barcode set, modify the barcode sequence in the raw fq file
-			sys.stderr.write("\n... ... step 1 ... ... %s \n\n" % time.asctime())
-			if os.path.exists(extract_barcode):
-				pass
-			else:
-				sys.stderr.write("\nstep 0 is not finished, please run step 0 again or provide extraced bracode info of the original 10x fq using '-e'\n\n")
-				sys.exit(-1)
+		R = extract_barcode()
+		sys.stderr.write("[ %s ] extract original barcode info from %s\n" % (time.asctime(), inputfq))
+		extract_barcode = R.revise(inputfq, outputDir)
+		sys.stderr.write("[ %s ] original barcode had been extracted, output file has been written to: %s\n\n" % (time.asctime(), extract_barcode))
+	if sys.argv[1] == "pre" or (sys.argv[1] == "all" and 1 in _process_):	## align to the barcode set, modify the barcode sequence in the raw fq file
+		sys.stderr.write("\n... ... step 1 ... ... %s \n\n" % time.asctime())
+		if os.path.exists(extract_barcode):
+			pass
+		else:
+			sys.stderr.write("\nstep 0 is not finished, please run step 0 again or provide extraced bracode info of the original 10x fq using '-e'\n\n")
+			sys.exit(-1)
 
-			barcoderef = G.Barcode()
-			bracode_aln_parameter = G.Barcode_aln_par()
-			bwa_path = G.Bwa()
-			barcodesam = extract_barcode.replace("gz", "sam")
-			sys.stderr.write("[ %s ] align to the barcode set\n" % time.asctime())
-			barcodesam = O.bwa_barcode(extract_barcode, barcodesam, bwa_path, bracode_aln_parameter, barcoderef)
-			sys.stderr.write("\n[ %s ] align to the barcode set, output sam file has been written to: %s\n" % (time.asctime(), barcodesam))
-		elif p == 2:
-			sys.stderr.write("\n... ... step 2 ... ... %s \n\n" % time.asctime())
-			if inputfq != None and os.path.exists(inputfq):
-				pass
-			else:
-				sys.stderr.write("\ninput fq not found, please provide the original 10x fq file using '-f'\n\n")
-				sys.exit(-1)
-			if barcodesam != None and os.path.exists(barcodesam):
-				pass
-			else:
-				sys.stderr.write("\nstep 1 is not finished, please run step 1 again or provide barcode sam file using '-s'\n\n")
-				sys.exit(-1)
+		barcoderef = G.Barcode()
+		bracode_aln_parameter = G.Barcode_aln_par()
+		bwa_path = G.Bwa()
+		barcodesam = extract_barcode.replace("gz", "sam")
+		sys.stderr.write("[ %s ] align to the barcode set\n" % time.asctime())
+		barcodesam = O.bwa_barcode(extract_barcode, barcodesam, bwa_path, bracode_aln_parameter, barcoderef)
+		sys.stderr.write("\n[ %s ] align to the barcode set, output sam file has been written to: %s\n" % (time.asctime(), barcodesam))
+	if sys.argv[1] == "pre" or (sys.argv[1] == "all" and 2 in _process_):
+		sys.stderr.write("\n... ... step 2 ... ... %s \n\n" % time.asctime())
+		if inputfq != None and os.path.exists(inputfq):
+			pass
+		else:
+			sys.stderr.write("\ninput fq not found, please provide the original 10x fq file using '-f'\n\n")
+			sys.exit(-1)
+		if barcodesam != None and os.path.exists(barcodesam):
+			pass
+		else:
+			sys.stderr.write("\nstep 1 is not finished, please run step 1 again or provide barcode sam file using '-s'\n\n")
+			sys.exit(-1)
 
-			M = modify_barcode()
-			if isset(newprefix):
+		M = modify_barcode()
+		if isset(newprefix):
+			pass
+		else:
+			newprefix = os.path.basename(inputfq)
+			if newprefix.find("fastq"):
+				strinfo = re.compile('fastq')
+				newprefix = strinfo.sub('new.fq', newprefix)
+			else:
+				strinfo = re.compile('fq')
+				newprefix = strinfo.sub('new.fq', newprefix)
+			newprefix = newprefix.replace('.gz', '')
+			newprefix = os.path.join(outputDir, newprefix)
+		sys.stderr.write("[ %s ] replace barcode info\n" % time.asctime())
+		newprefix = M.replace_barcode(inputfq, barcodesam, newprefix)
+		sys.stderr.write("[ %s ] barcode has been replaced, and new fq files have been written to %s_[1/2].fq.gz\n" % (time.asctime(), newprefix))
+	if sys.argv[1] == "aln" or (sys.argv[1] == "all" and 3 in _process_):
+		sys.stderr.write("\n... ... step 3 ... ... %s \n\n" % time.asctime())
+		if newprefix == None:
+			sys.stderr.write("\nstep 2 is not finished, please run step 2 again or provide the prefix of the paired fq files unsing '-p'\n\n")
+			sys.exit(-1)
+		else:
+			fq1 = newprefix + "_1.fq.gz"
+			fq2 = newprefix + "_2.fq.gz"
+			if os.path.exists(fq1) and os.path.exists(fq2):
 				pass
 			else:
-				newprefix = os.path.basename(inputfq)
-				if newprefix.find("fastq"):
-					strinfo = re.compile('fastq')
-					newprefix = strinfo.sub('new.fq', newprefix)
-				else:
-					strinfo = re.compile('fq')
-					newprefix = strinfo.sub('new.fq', newprefix)
-				newprefix = newprefix.replace('.gz', '')
-				newprefix = os.path.join(outputDir, newprefix)
-			sys.stderr.write("[ %s ] replace barcode info\n" % time.asctime())
-			newprefix = M.replace_barcode(inputfq, barcodesam, newprefix)
-			sys.stderr.write("[ %s ] barcode has been replaced, and new fq files have been written to %s_[1/2].fq.gz\n" % (time.asctime(), newprefix))
-		elif p == 3:
-			sys.stderr.write("\n... ... step 3 ... ... %s \n\n" % time.asctime())
-			if newprefix == None:
 				sys.stderr.write("\nstep 2 is not finished, please run step 2 again or provide the prefix of the paired fq files unsing '-p'\n\n")
 				sys.exit(-1)
-			else:
-				fq1 = newprefix + "_1.fq.gz"
-				fq2 = newprefix + "_2.fq.gz"
-				if os.path.exists(fq1) and os.path.exists(fq2):
-					pass
-				else:
-					sys.stderr.write("\nstep 2 is not finished, please run step 2 again or provide the prefix of the paired fq files unsing '-p'\n\n")
-					sys.exit(-1)
 
 			
-			ref_path = G.Ref()
-			fq_aln_parameter = G.Fq_aln_par()
-			bwa_path = G.Bwa()
-			samtools = G.Samtools()
+		ref_path = G.Ref()
+		fq_aln_parameter = G.Fq_aln_par()
+		fq_sam_parameter = G.Fq_sam_par()
+		eachRGinfo = G.RG_info()
+		bwa_path = G.Bwa()
+		samtools = G.Samtools()
 
-			sys.stderr.write("[ %s ] align to the genome %s\n" % (time.asctime(), ref_path))
-			original_sam = O.bwa_fq(fq1, fq2, newprefix, bwa_path, fq_aln_parameter)
-			sys.stderr.write("[ %s ] alignment finished. Original sam file has been writeen to %s\n\n" % (time.asctime(), original_sam))
+		sys.stderr.write("[ %s ] align to the genome %s\n" % (time.asctime(), ref_path))
+		original_sam = O.bwa_fq(fq1, fq2, newprefix, bwa_path, fq_aln_parameter, fq_sam_parameter, eachRGinfo)
+		sys.stderr.write("[ %s ] alignment finished. Original sam file has been writeen to %s\n\n" % (time.asctime(), original_sam))
 
-			M = modify_barcode()
-			samtools = G.Samtools()
-			samdir = os.path.dirname(original_sam)
-			(Sortedbam, Sortedsam) = M.fill_barcode(original_sam, samtools, samdir)
-		elif p == 4:
-			sys.stderr.write("\n... ... step 4 ... ... %s \n\n" % time.asctime())
-			if Sortedbam == None:
-				sys.stderr.write("\nstep 3 is not finished, please run step 3 again or provide sorted bam files unsing '-M'\n\n")
-				sys.exit(-1)
-			elif os.path.exists(Sortedbam):
-				pass
-			else:
-				sys.stderr.write("%s is not exists!\n" % (Sortedbam))
-				sys.exit(-1)
+		M = modify_barcode()
+		samtools = G.Samtools()
+		samdir = os.path.dirname(original_sam)
+		(Sortedbam, Sortedsam) = M.fill_barcode(original_sam, samtools, samdir)
+	if sys.argv[1] == "aln" or (sys.argv[1] == "all" and 4 in _process_):
+		sys.stderr.write("\n... ... step 4 ... ... %s \n\n" % time.asctime())
+		if Sortedbam == None:
+			sys.stderr.write("\nstep 3 is not finished, please run step 3 again or provide sorted bam files unsing '-M'\n\n")
+			sys.exit(-1)
+		elif os.path.exists(Sortedbam):
+			pass
+		else:
+			sys.stderr.write("%s is not exists!\n" % (Sortedbam))
+			sys.exit(-1)
 
-			javapath = G.Java()
-			picardpath = G.Picard()
-			picardparameter = G.Picardparameter()
-			Markedbam = Sortedbam.replace('bam', 'marked.bam')
-			sys.stderr.write("[ %s ] mark duplication ... \n" % time.asctime())
-			Markedbam = O.picard_markdup(Sortedbam, Markedbam, javapath, picardpath, picardparameter)
-			if os.path.exists(Markedbam):
-				sys.stderr.write("[ %s ] duplication reads have been marked, and the output has been written to %s \n" % (time.asctime(), Markedbam))
-			else:
-				sys.stderr.write("\nERROR: %s has not been created, please check the warning info and try again\n\n" % Markedbam)
-				sys.exit(-1)
-		elif p == 5:
-			sys.stderr.write("\n... ... step 5 ... ... %s \n\n" % time.asctime())
-			if Markedbam == None:
-				sys.stderr.write("\nstep 4 is not finished, please run step 4 again or provide marked bam file unsing '-k'\n\n")
-				sys.exit(-1)
-			elif os.path.exists(Markedbam):
-				pass
-			else:
-				sys.stderr.write("%s is not exists!\n" % (Markedbam))
-				sys.exit(-1)
+		javapath = G.Java()
+		picardpath = G.Picard()
+		picardparameter = G.Picardparameter()
+		Markedbam = Sortedbam.replace('bam', 'marked.bam')
+		sys.stderr.write("[ %s ] mark duplication ... \n" % time.asctime())
+		Markedbam = O.picard_markdup(Sortedbam, Markedbam, javapath, picardpath, picardparameter)
+		if os.path.exists(Markedbam):
+			sys.stderr.write("[ %s ] duplication reads have been marked, and the output has been written to %s \n" % (time.asctime(), Markedbam))
+		else:
+			sys.stderr.write("\nERROR: %s has not been created, please check the warning info and try again\n\n" % Markedbam)
+			sys.exit(-1)
+	if sys.argv[1] == "cal" or (sys.argv[1] == "all" and 5 in _process_):
+		sys.stderr.write("\n... ... step 5 ... ... %s \n\n" % time.asctime())
+		if Markedbam == None:
+			sys.stderr.write("\nstep 4 is not finished, please run step 4 again or provide marked bam file unsing '-k'\n\n")
+			sys.exit(-1)
+		elif os.path.exists(Markedbam):
+			pass
+		else:
+			sys.stderr.write("%s is not exists!\n" % (Markedbam))
+			sys.exit(-1)
 		
-			samtools_path = G.Samtools()
-			barcode_index = G.Barcode_index()
-			genomesize = G.Genomesize()
-			C = CFCR()
-			samdir = os.path.dirname(Markedbam)
-			sys.stderr.write("[ %s ] split sam file by chr, sort sam file by barcode ... \n" % time.asctime())
-			Samfilepath = C.split_and_sort_sam(Markedbam, samtools_path, barcode_index, samdir)
-			sys.stderr.write("[ %s ] splited and sorted sam file list: %s \n\n" % (time.asctime(), Samfilepath))
+		samtools_path = G.Samtools()
+		barcode_index = G.Barcode_index()
+		C = CFCR()
+		samdir = os.path.dirname(Markedbam)
+		sys.stderr.write("[ %s ] split sam file by chr, sort sam file by barcode ... \n" % time.asctime())
+		Samfilepath = C.split_and_sort_sam(Markedbam, samtools_path, barcode_index, samdir)
+		sys.stderr.write("[ %s ] splited and sorted sam file list: %s \n\n" % (time.asctime(), Samfilepath))
+	if sys.argv[1] == "cal" or (sys.argv[1] == "all" and 6 in _process_):
+		sys.stderr.write("\n... ... step 6 ... ... %s \n\n" % time.asctime())
+		if Samfilepath == None:
+			sys.stderr.write("\nstep 5 is not finished, please run step 5 again or provide sorted_by_barcode bam list unsing '-P'\n\n")
+			sys.exit(-1)
+		elif os.path.exists(Samfilepath):
+			pass
+		else:
+			sys.stderr.write("%s does not exist!\n" % (Samfilepath))
+			sys.exit(-1)
+			
+		C = CFCR()
+		samdir = os.path.dirname(Samfilepath)
+		genomesize = G.Genomesize()
+		sys.stderr.write("[ %s ] calculating CF/CR ... \n" % time.asctime())
+		stattxt = C.calculate(Samfilepath, genomesize, samdir)
+		sys.stderr.write("[ %s ] CF/CR has been written to %s \n" % (time.asctime(), stattxt))
+	if sys.argv[1] == "var" or (sys.argv[1] == "all" and 7 in _process_):
+		sys.stderr.write("\n... ... stpe 7 ... ... %s \n\n" % time.asctime())
+		if Markedbam == None:
+			sys.stderr.write("\nstep 4 is not finished, please run step 4 again or provide marked bam files unsing '-k'\n\n")
+			sys.exit(-1)
+		elif os.path.exists(Markedbam):
+			pass
+		else:
+			sys.stderr.write("%s does not exist!\n" % (Markedbam))
+			sys.exit(-1)
 
-			sys.stderr.write("[ %s ] calculating CF/CR ... \n" % time.asctime())
-			stattxt = C.calculate(Samfilepath, genomesize, samdir)
-			sys.stderr.write("[ %s ] CF/CR has been written to %s \n" % (time.asctime(), stattxt))
-		elif p == 6:
-			sys.stderr.write("\n... ... stpe 6 ... ... %s \n\n" % time.asctime())
-			if Markedbam == None:
-				sys.stderr.write("\nstep 5 is not finished, please run step 5 again or provide marked bam files unsing '-k'\n\n")
-				sys.exit(-1)
-			elif os.path.exists(Markedbam):
-				pass
+		if Chrlist == None:
+			sys.stderr.write("\nprovide chr list unsing '-L'\n\n")
+			sys.exit(-1)
+		elif os.path.exists(Chrlist):
+			pass
+		else:
+			sys.stderr.write("%s does not exist!\n" % (Chrlist))
+			sys.exit(-1)
+
+		javapath = G.Java()
+		gatkpath = G.Gatk()
+		ref = G.Ref()
+		dbsnp = G.Dbsnp()
+		HaplotypeCaller_par = G.HaplotypeCaller()
+		GenotypeGVCFs_par = G.GenotypeGVCFs()
+
+		bamdir = os.path.dirname(Markedbam)
+		vcfdir = os.path.join(bamdir, "vcf")
+		if os.path.exists(vcfdir) and os.path.isdir(vcfdir):
+			pass
+		else:
+			sys.stderr.write("%s does not exist!\n" % vcfdir)
+			os.mkdir(vcfdir)
+
+		shelldir = os.path.join(vcfdir, "shell")
+		if os.path.exists(shelldir) and os.path.isdir(shelldir):
+			pass
+		else:
+			os.mkdir(shelldir)
+
+		Chrshell = list()
+		rChrlist = open(Chrlist, 'r')
+		ChrGvcflist = list()
+		chrpriority = None
+		AllChrVcf = None
+		for ch in rChrlist:
+			ch = ch.strip()
+			chrshell = os.path.join(shelldir, ch + ".vcf.sh")
+			chrgvcf = os.path.join(vcfdir, ch + ".gvcf")
+			chrvcf = os.path.join(vcfdir, ch + ".vcf")
+			wchrshell = open(chrshell, 'w')
+			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "-T HaplotypeCaller -R", ref, "-I", Markedbam, "-U --emitRefConfidence GVCF" + HaplotypeCaller_par + "--dbsnp", dbsnp, "-L", ch, "-o", chrgvcf, "\n"])
+			wchrshell.write(shell_line)
+			shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "-T GenotypeGVCFs --variant", chrgvcf, "-o", chrvcf, "--dbsnp", dbsnp, GenotypeGVCFs_par, "-L", ch, "\n"])
+			ChrGvcflist.append(chrvcf)
+			wchrshell.write(shell_line)
+			wchrshell.close()
+
+			Chrshell.append(chrshell)
+			if chrpriority == None:
+				chrpriority = str(ch)
+				AllChrVcf = "--variant:" + ch + " " + chrgvcf
 			else:
-				sys.stderr.write("%s is not exists!\n" % (Markedbam))
-				sys.exit(-1)
+				chrpriority = chrpriority + "," + str(ch)
+				AllChrVcf = AllChrVcf + " --variant:" + ch + " " + chrgvcf
 
-			if Chrlist == None:
-				sys.stderr.write("\nprovide chr list unsing '-L'\n\n")
-				sys.exit(-1)
-			elif os.path.exists(Chrlist):
-				pass
-			else:
-				sys.stderr.write("%s is not exists!\n" % Chrlist)
-				sys.exists(-1)
+		ShellNum = len(Chrshell)
+		## ParallelNum = 3
+		finishNum = 0
+		pn = 0
+		ts = 0
+		shell_line = None
+		while finishNum < ShellNum:
+			if pn < ParallelNum:
+				if pn == 0:
+					tmpshell = os.path.join(shelldir, "tmp." + ts + ".sh")
+					wtmpshell = open(tmpshell, 'w')
+					shell_line = "sh " + Chrshell[finishNum] + " &\n"
+				else:
+					shell_line = shell_line + "sh " + Chrshell[finishNum] + " &\n"
+				pn = pn + 1
 
-			javapath = G.Java()
-			gatkpath = G.Gatk()
-			ref = G.Ref()
-			dbsnp = G.Dbsnp()
+			finishNum = finishNum + 1
+			if pn == ParallelNum:
+				wtmpshell.write(shell_line)
+				wtmpshell.close()
+				subprocess.call(["sh", tmpshell])
+				pn = 0
+				ts = ts + 1
+				sys.stderr.write("Command: %s\n" % shell_line)
 
-			bamdir = os.path.dirname(Markedbam)
-			vcfdir = os.path.join(bamdir, "vcf")
-			if os.path.exists(vcfdir):
-				pass
-			else:
-				os.mkdir(vcfdir)
+		if pn > 0:
+			tmpshell = os.path.join(shelldir, "tmp." + ts + ".sh")
+			wtmpshell = open(tmpshell, 'w')
+			wtmpshell.write(shell_line)
+			wtmpshell.close()
+			subprocess.call(["sh", tmpshell])
+			sys.stderr.write("Command: %s\n" % shell_line)
 
-			shelldir = op.path.join(vcfdir, "shell")
-			if os.path.exists(shelldir):
-				pass
-			else:
-				os.mkdir(vcfdir)
+		UnphaseVcf = os.path.join(bamdir, "all.vcf")
+		tmpshell = os.path.join(shelldir, "combine_vcf.sh")
+		wtmpshell = open(tmpshell, 'w')
+		shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "-genotypeMergeOptions PRIORITIZE -priority", chrpriority, "\n"])
+		wtmpshell.write(shell_line)
+		wtmpshell.close()
+		subprocess.call(["sh", tmpshell])
 
-			rChrlist = open(Chrlist, 'r')
-			for ch in rChrlist:
-				ch = ch.strip()
-				chrshell = os.path.join(shelldir, ch + ".vcf.sh")
-				chrgvcf = os.path.join(vcfdir, ch + ".gvcf")
-				chrvcf = os.path.join(vcfdir, ch + ".vcf")
-				wchrshell = open(chrshell, 'w')
-				shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "-T HaplotypeCaller -R", ref, "-I", Markedbam, "-U --emitRefConfidence GVCF --variant_index_type LINEAR --variant_index_parameter 128000 --dbsnp", dbsnp, "-L", ch, "-o", chrgvcf, "\n"])
-				wchrshell.write(shell_line)
-				shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "-T GenotypeGVCFs --variant", chrgvcf, "-o", chrvcf, "--dbsnp", dbsnp, "-allSites -L", ch, "\n"])
-				wchrshell.write(shell_line)
-				wchrshell.close()
+		sys.stderr.write("[ %s ] vcf file has been writeen to %s\n\n" % (time.asctime(), UnphaseVcf))
 
-				sys.stderr.write("sh %s\n" % chrshell)
+	if sys.argv[1] == "pha" or (sys.argv[1] == "all" and 8 in _process_):
+		if Markedbam == None:
+			sys.stderr.write("\nstep 4 is not finished, please run step 4 again or provide marked bam files unsing '-k'\n\n")
+			sys.exit(-1)
+		elif os.path.exists(Markedbam):
+			pass
+		else:
+			sys.stderr.write("%s does not exist!\n" % (Markedbam))
+			sys.exit(-1)
+
+		if UnphaseVcf == None:
+			sys.stderr.write("\nstep 7 is not finished, please run step 7 again or provide unphased vcf file using '-u'\n\n")
+			sys.exit(-1)
+		elif os.path.exists(UnphaseVcf):
+			pass
+		else:
+			sys.stderr.write("%s does not exist!\n" % (UnphaseVcf))
+			sys.exit(-1)
+
+		javapath = G.Java()
+		HapCut_path = G.HapCut()
+		fgbio_path = G.Fgbio()
+		HapCut_par = G.HapCut_par()
+
+		Path_extractHAIRS = HapCut_path + '/build/extractHAIRS'
+		Path_HAPCUT2 = HapCut_path + '/build/HAPCUT2'
+		PathSNAPSHOT = fgbio_path + '/fgbio/target/fgbio-0.2.0-SNAPSHOT.jar'
+
+		PhaseVcf = UnphaseVcf
+		PhaseVcf = PhaseVcf.replace("vcf", "phased.vcf")
+		fragment_file = PhaseVcf
+		fragment_file = fragment_file.replace("phased.vcf", "phased.fragment")
+		haplotype_output_file = PhaseVcf
+		haplotype_output_file = haplotype_output_file.replace("phased.vcf", "haplotype.txt")
+
+		tmpdir = os.path.dirname(UnphaseVcf)
+		tmpshell = os.path.join(tmpdir, "phase.sh")
+		wtmpshell = open(tmpshell, 'w')
+		shell_line = " ".join([Path_extractHAIRS, "--bam", Markedbam, "--VCF", UnphaseVcf, "--out", fragment_file, "\n"])
+		wtmpshell.write(shell_line)
+		shell_line = " ".join([Path_HAPCUT2, "--fragments", fragment_file, "--vcf", UnphaseVcf, "--output", haplotype_output_file, "\n"])
+		wtmpshell.write(shell_line)
+		shell_line = " ".join([javapath, "-jar", PathSNAPSHOT, "HapCutToVcf -v", UnphaseVcf, "-i", haplotype_output_file, "-o", PhaseVcf, "\n"])
+		wtmpshell.write(shell_line)
+		wtmpshell.close()
+
+		subprocess.call(["sh", tmpshell])
+
+		sys.stderr.write("[ %s ] phased vcf file has been writeen to %s\n\n" % (time.asctime(), PhaseVcf))
 
