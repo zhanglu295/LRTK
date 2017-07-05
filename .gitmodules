@@ -7,3 +7,6 @@
 [submodule "RequiredProgram/bwa"]
 	path = RequiredProgram/bwa
 	url = https://github.com/lh3/bwa.git
+[submodule "RequiredProgram/simulation"]
+	path = RequiredProgram/simulation
+	url = https://github.com/zhanglu295/SIMLR
