@@ -10,3 +10,9 @@
 [submodule "RequiredProgram/SIMLR"]
 	path = RequiredProgram/SIMLR
 	url = https://github.com/zhanglu295/SIMLR
+[submodule "RequiredProgram/quast"]
+	path = RequiredProgram/quast
+	url = https://github.com/ablab/quast.git
+[submodule "RequiredProgram/abyss"]
+	path = RequiredProgram/abyss
+	url = https://github.com/bcgsc/abyss.git
