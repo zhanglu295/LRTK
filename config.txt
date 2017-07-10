@@ -1,35 +1,107 @@
+#The path of required software and data
+##FastQC
+fastqc = ***
+##BWA
 bwa = /ifs4/BC_COM_P7/F15HTSSCKF3053/HUMctxR/backup/work/10x/dataset/longranger-2.1.3/bwa/0.7.12/bwa
+##SAMtools
 samtools = /ifs4/BC_COM_P7/F15HTSSCKF3053/HUMctxR/backup/work/10x/dataset/longranger-2.1.3/samtools/0.1.19/samtools
-java = /ifs4/BC_PUB/biosoft/pipeline/newblc/03.Soft_ALL/jre1.8.0_112/bin/java
+##Picard
 picard = /ifs4/BC_PUB/biosoft/pipeline/newblc/03.Soft_ALL/picard-2.9.4/build/libs/picard.jar
+##GATK
+gatk = /ifs4/BC_COM_P7/F16FTSAPHT0404/RATxukM/zwj/bin/software/GenomeAnalysisTK-3.7-0/GenomeAnalysisTK.jar
+##GATK bundle
+bundle = ***
+##dbSNP
+dbSNP = ***
+##HAIRS
+HAIRS = ***
+##HAPCut2
+HapCut = ****
+##fgbio
+fgbio = ****
+##SuperNova
+supernova = ****
+##SAPdes
+spades = ****
+##Abyss
+abyss = ****
+##ARCS
+arcs = ****
+##Quast
+quast = ****
+##SIMLR
+simlr = ****
 
-### barcode alignment
-barcode = /ifs4/BC_COM_P7/F15HTSSCKF3053/HUMctxR/backup/work/10x/dataset/barcode/barcode
+###the output folder, the folder include FastQC report, clean fastq, statistics
+output_folder = ***
+
+#Simulation Pipeline
+## the folder containing config files
+in_config_folder = ****
+
+
+#Reseq Pipeline
+##Quality Control
+(including FastQC, extract barcode, align and correct barcode)
+###the folder include fastq files
+input_folder_FQ = ***
+###barcode whitelist
+BC_wl = /ifs4/BC_COM_P7/F15HTSSCKF3053/HUMctxR/backup/work/10x/dataset/barcode/barcode
 barcode_aln_parameter = -l 5
 
-### fq alignment
+##Reads Alignment and Mark duplication
+###Reads Alignment 
 ref = /ifs4/BC_COM_P7/F15HTSSCKF3053/HUMctxR/backup/work/10x/dataset/refdata-hg19-2.1.0/fasta/genome.fa
 fq_aln_parameter = -B 16
 fq_sampe_parameter = -a 1000
 RG = @RG\tID:read-RA_si-AAGTTGCA_lane-001-chunk-0002\tPL:10x\tPU:read-RA_si-AAGTTGCA_lane-001-chunk-0002\tLB:read-RA_si-AAGTTGCA\tSM:RA
-
 ### mark duplicate
 picard_parameter = BARCODE_TAG=BX REMOVE_DUPLICATES=false ASSUME_SORTED=true VALIDATION_STRINGENCY=LENIENT CREATE_INDEX=true
 
-### calculating CF/CR
+##Calculate Statistics: CF,CR,Mu_FL,N_FP,etc.(Can skip this step now) 
 barcode_index = -k12
 genomesize = 28000000000
 
-### variant call - gatk
-gatk = /ifs4/BC_COM_P7/F16FTSAPHT0404/RATxukM/zwj/bin/software/GenomeAnalysisTK-3.7-0/GenomeAnalysisTK.jar
-###### gatk dataset download:  ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/
-###### /ifs4/BC_COM_P7/F16FTSAPHT0404/RATxukM/zwj/bin/database/b37
-dbsnp = /ifs4/BC_COM_P7/F15HTSSCKF3053/HUMctxR/backup/work/10x/dataset/dbsnp/dbsnp137.vcf
+##Variant Call
 HaplotypeCaller_par = --variant_index_type LINEAR --variant_index_parameter 128000
 #GenotypeGVCFs_par = -allSites
 GenotypeGVCFs_par = None
 
-### phasing
-HapCut = ****
-fgbio = ****
-HapCut_par = None
+##Phasing
+AlignBAM = ***
+in_VCF = ***
+out_VCF = ***
+##command line
+HAIRS --bam AlignBAM --VCF in_VCF --out fragment_file
+HapCut --fragments fragment_file --vcf in_VCF --output haplotype_output_file
+java -jar fgbio HapCutToVcf -v in_VCF -i haplotype_output_file -o out_VCF
+
+#Denovo
+##Supernova
+###the folder include fastq files
+input_folder_FQ = ***
+prefix = ***
+style = ***
+###command line
+supernova run --id=supernova_assemble --fastqs=input_folder_FQ
+supernova mkoutput --asmdir=output_folder/supernova_assemble/outs/assembly --outprefix=output_folder/prefix --style=style
+
+##SPAdes
+###the fastq file
+input_FQ = ***
+###command line
+spades.py --12 input_FQ -o output_folder
+
+##Abyss
+###input_essential parameters
+kmer = ***
+baseq = ***
+
+B
+H
+kc
+###command line
+abyss np=10 name=config1 k=70 q=15 v=-v l=40 s=1000 n=10 S=1000-10000 N=7 in='/scratch/users/zhanglu2/myproject/simulation/WGS_sim/parameter_simulation/species/Cf/1/basic1/outs/new.fastq' B=1G H=3 kc=3
+
+
+

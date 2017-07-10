@@ -16,3 +16,6 @@
 [submodule "RequiredProgram/abyss"]
 	path = RequiredProgram/abyss
 	url = https://github.com/bcgsc/abyss.git
+[submodule "RequiredProgram/sparsehash"]
+	path = RequiredProgram/sparsehash
+	url = https://github.com/sparsehash/sparsehash
