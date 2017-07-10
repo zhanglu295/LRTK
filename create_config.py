@@ -1,6 +1,7 @@
 import os, sys
 import getopt
 import time
+import re
 
 class create_config:
 	def QC_config(self, QC_config_file):
@@ -21,7 +22,7 @@ class create_config:
 		genome_fa = dataset_dir + '/genome/genome.fa'
 		config_line = "\n".join(["###alignment", "ref = " + genome_fa, "fq_aln_parameter = -B 16", "fq_sampe_parameter = -a 1000", "", ""])
 		wQC_config_file.write(config_line)
-		config_line = "\n".join(["###merge multiple bam files belong to the same files", "picard_merge_parameter = ASSUME_SORTED=true USE_THREADING=true VALIDATION_STRINGENCY=LENIENT"])
+		config_line = "\n".join(["###merge multiple bam files belong to the same files", "picard_merge_parameter = ASSUME_SORTED=true USE_THREADING=true VALIDATION_STRINGENCY=LENIENT", "", ""])
 		wQC_config_file.write(config_line)
 		config_line = "\n".join(["###mark duplication", "picard_mark_parameter = BARCODE_TAG=BX REMOVE_DUPLICATES=false ASSUME_SORTED=true VALIDATION_STRINGENCY=LENIENT CREATE_INDEX=true", "", ""])
 		wQC_config_file.write(config_line)
@@ -34,10 +35,13 @@ class create_config:
 		script_abs_path = os.path.abspath(sys.argv[0])
 		script_dir = os.path.dirname(script_abs_path) + '/bin'
 		dataset_dir = os.path.dirname(script_abs_path) + '/dataset'
+		genome_fa = dataset_dir + '/genome/genome.fa'
 		gatk = script_dir + '/gatk-package-4.beta.1-local.jar'
 		dbsnp = dataset_dir + '/dbsnp137.vcf'
 		java = 'java'
-		config_line = "\n".join(["###variation call", "gatk = " + gatk, "dbsnp = " + dbsnp, "HaplotypeCaller_par = --variant_index_type LINEAR --variant_index_parameter 128000", "", ""])
+		config_line = "\n".join(["###basic software", "java = " + java, "", ""])
+		wReseq_config_file.write(config_line)
+		config_line = "\n".join(["###variation call", "gatk = " + gatk, "ref = " + genome_fa, "dbsnp = " + dbsnp, "HaplotypeCaller_par = --variant_index_type LINEAR --variant_index_parameter 128000", "GenotypeGVCFs_par = None", "", ""])
 		wReseq_config_file.write(config_line)
 		config_line = "\n".join(["###SV call", "", ""])
 		wReseq_config_file.write(config_line)
@@ -46,6 +50,20 @@ class create_config:
 		config_line = "\n".join(["###phasing", "HapCut = " + Hapcut2, "fgbio = " + fgbio, "", ""])
 		wReseq_config_file.write(config_line)
 		wReseq_config_file.close()
+
+		config_dir = os.path.dirname(Reseq_config_file)
+		chrlistfile = os.path.join(config_dir, "chrlist.txt")
+		wchrlistfile = open(chrlistfile, 'w')
+		genomedictfile = dataset_dir + "/genome/genome.dict"
+		rgenomedictfile = open(genomedictfile, 'r')
+		for chrinfo in rgenomedictfile:
+			chrinfo = chrinfo.strip()
+			if chrinfo.startswith('@SQ'):
+				chrinfolist = re.split("\t", chrinfo)
+				chrid = chrinfolist[1].replace("SN:", "") + "\n"
+				wchrlistfile.write(chrid)
+		wchrlistfile.close()
+		rgenomedictfile.close()
 
 	def Denovo_config(self, Denovo_config_file):
 		wDenovo_config_file = open(Denovo_config_file, 'w')
