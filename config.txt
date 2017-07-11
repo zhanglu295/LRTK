@@ -93,15 +93,27 @@ input_FQ = ***
 spades.py --12 input_FQ -o output_folder
 
 ##Abyss
+###the fastq file
+input_FQ = ***
 ###input_essential parameters
 kmer = ***
 baseq = ***
-
-B
-H
-kc
+BFS = ***
+NBH = ***
+kc = ***
+prefix = ***
 ###command line
-abyss np=10 name=config1 k=70 q=15 v=-v l=40 s=1000 n=10 S=1000-10000 N=7 in='/scratch/users/zhanglu2/myproject/simulation/WGS_sim/parameter_simulation/species/Cf/1/basic1/outs/new.fastq' B=1G H=3 kc=3
+abyss name=prefix k=kmer q=baseq v=-v in='input_FQ' B=BFS H=NBH kc=kc
+
+##Quast
+thread = ***
+labellist=lable1,lable2,lable3
+fastlist=fast1.fa,fast2.fa,fast3.fa
+ref=reference
+prefix=prefix
+##command line
+quast.py --extensive-mis-size 100 --plots-format png --no-snps --threads thread --fast --labels label1,label2,label3 fast1.fa fast2.fa fast3.fa -R ref -o prefix
+
 
 
 

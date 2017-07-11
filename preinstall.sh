@@ -62,18 +62,24 @@ cd ./RequiredProgram/abyss/
 wget http://downloads.sourceforge.net/project/boost/boost/1.56.0/boost_1_56_0.tar.bz2
 tar jxf boost_1_56_0.tar.bz2
 rm boost_1_56_0.tar.bz2
+cd ../../
+#install sparsehash
+cd ./RequiredProgram/sparsehash/
+./configure --prefix=`pwd`
+make
+make install
 WORD
-	https://code.google.com/p/sparsehash/
-
-:<<A
 #Abyss
-cd ./RequiredProgram/abyss/
+cd ./RequiredProgram
+PATHname1=`pwd`
+cd ./abyss
+PATHname2=`pwd`
+sparsehash="-I"${PATHname1}"/sparsehash/include/"
 autogen.sh
-./configure --with-boost=/usr/local/include
-./configure --prefix=`pwd` --with-boost=./boost_1_56_0/boost
+./configure CPPFLAGS=$sparsehash --prefix=$PATHname2 --with-boost=${PATHname2}"/boost_1_56_0/boost" --disable-openmp
 make 
 make install
-A
+
 
 
 
