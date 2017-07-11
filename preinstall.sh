@@ -1,6 +1,5 @@
 #!/bin/sh
 mkdir bin
-:<<WORD
 #download picard
 wget https://github.com/broadinstitute/picard/releases/download/2.9.4/picard.jar
 mv picard.jar ./bin
@@ -31,6 +30,7 @@ wget https://github.com/sbt/sbt/releases/download/v0.13.15/sbt-0.13.15.tgz
 tar zxvf sbt-0.13.15.tgz
 mv ./sbt/bin/* ./bin
 rm sbt-0.13.15.tgz
+rm -rf sbt
 #compile fgbio
 cd ./RequiredProgram/fgbio
 ../../bin/sbt assembly
@@ -57,7 +57,9 @@ rm SPAdes-3.10.1-Linux.tar.gz
 rm -rf ./SPAdes-3.10.1-Linux/
 cd ..
 #Install boost
-cd ./RequiredProgram/abyss/
+cd ./RequiredProgram
+mkdir boostlib
+cd boostlib
 wget http://downloads.sourceforge.net/project/boost/boost/1.56.0/boost_1_56_0.tar.bz2
 tar jxf boost_1_56_0.tar.bz2
 rm boost_1_56_0.tar.bz2
@@ -72,18 +74,30 @@ cd ../../
 cd ./RequiredProgram
 PATHname1=`pwd`
 cd ./abyss
-PATHname2=`pwd`
 sparsehash="-I"${PATHname1}"/sparsehash/include/"
-autogen.sh
-./configure CPPFLAGS=$sparsehash --prefix=${PATHname1}"/abyss-bin" --with-boost=${PATHname2}"/boost_1_56_0/boost" --disable-openmp
+./autogen.sh
+./configure CPPFLAGS=$sparsehash --prefix=${PATHname1}"/abyss-bin" --with-boost=${PATHname1}"/boostlib/boost_1_56_0/boost" --disable-openmp
 make 
 make install
-cp ../abyss-bin/abyss-pe ../../bin
+cp ../abyss-bin/bin/abyss-pe ../../bin
 rm -rf ../abyss-bin
-WORD
+cd ../../
 #ARCS
-
-
-
-
-
+cd ./RequiredProgram
+PATHname1=`pwd`
+cd ./ARCS
+./autogen.sh 
+./configure --with-boost=${PATHname1}"/boostlib/boost_1_56_0" --prefix=${PATHname1}"/ARCS-bin"
+make install
+cp ../ARCS-bin/bin/arcs ../../bin 
+rm -rf ../ARCS-bin
+cd ../../
+##LINKS
+wget http://www.bcgsc.ca/platform/bioinfo/software/links/releases/1.8.5/links_v1-8-5.tar.gz
+tar zxvf links_v1-8-5.tar.gz
+rm links_v1-8-5.tar.gz
+cp ./links_v1.8.5/LINKS.pl ./bin
+rm -rf ./links_v1.8.5
+##Quast
+cd ./RequiredProgram/quast
+cp quast.py ../../bin
