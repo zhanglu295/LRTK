@@ -19,3 +19,6 @@
 [submodule "RequiredProgram/sparsehash"]
 	path = RequiredProgram/sparsehash
 	url = https://github.com/sparsehash/sparsehash
+[submodule "RequiredProgram/ARCS"]
+	path = RequiredProgram/ARCS
+	url = https://github.com/bcgsc/arcs

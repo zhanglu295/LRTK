@@ -56,7 +56,6 @@ cp ./SPAdes-3.10.1-Linux/bin/spades.py ./
 rm SPAdes-3.10.1-Linux.tar.gz
 rm -rf ./SPAdes-3.10.1-Linux/
 cd ..
-
 #Install boost
 cd ./RequiredProgram/abyss/
 wget http://downloads.sourceforge.net/project/boost/boost/1.56.0/boost_1_56_0.tar.bz2
@@ -68,7 +67,7 @@ cd ./RequiredProgram/sparsehash/
 ./configure --prefix=`pwd`
 make
 make install
-WORD
+cd ../../
 #Abyss
 cd ./RequiredProgram
 PATHname1=`pwd`
@@ -76,9 +75,13 @@ cd ./abyss
 PATHname2=`pwd`
 sparsehash="-I"${PATHname1}"/sparsehash/include/"
 autogen.sh
-./configure CPPFLAGS=$sparsehash --prefix=$PATHname2 --with-boost=${PATHname2}"/boost_1_56_0/boost" --disable-openmp
+./configure CPPFLAGS=$sparsehash --prefix=${PATHname1}"/abyss-bin" --with-boost=${PATHname2}"/boost_1_56_0/boost" --disable-openmp
 make 
 make install
+cp ../abyss-bin/abyss-pe ../../bin
+rm -rf ../abyss-bin
+WORD
+#ARCS
 
 
 

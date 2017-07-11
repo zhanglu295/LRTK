@@ -27,6 +27,8 @@ spades = ****
 abyss = ****
 ##ARCS
 arcs = ****
+##MAKETSV
+maketsv = ***
 ##Quast
 quast = ****
 ##SIMLR
@@ -104,13 +106,24 @@ kc = ***
 prefix = ***
 ###command line
 abyss name=prefix k=kmer q=baseq v=-v in='input_FQ' B=BFS H=NBH kc=kc
-
+##ARCS
+###the fastq file
+input_FQ = ***
+Draft_genome = ***
+###command line
+cat Draft_genome |perl -ne 'chomp;if(/^\>/){$ct++;print ">$ct\n";}else{print "$_\n";}' > Draft_genome-renamed.fa
+bwa index Draft_genome-renamed.fa
+bwa mem -t 32 Draft_genome-renamed.fa -p input_FQ | samtools view -Sb - | samtools sort -n -o ./Draft_genome-renamed.bam
+arcs -f Draft_genome-renamed.fa -a alignment_scaffold.fof -b Draft_genome_arcs
+python maketsv Draft_genome_arcs_original.gv Draft_genome_arcs.tigpair_checkpoint.tsv Draft_genome-renamed.fa
+touch empty.fof
+LINKS -f Draft_genome-renamed.fa -s empty.fof -b Draft_genome_arcs
 ##Quast
 thread = ***
 labellist=lable1,lable2,lable3
 fastlist=fast1.fa,fast2.fa,fast3.fa
-ref=reference
-prefix=prefix
+ref=***
+prefix=***
 ##command line
 quast.py --extensive-mis-size 100 --plots-format png --no-snps --threads thread --fast --labels label1,label2,label3 fast1.fa fast2.fa fast3.fa -R ref -o prefix
 
