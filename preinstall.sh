@@ -1,5 +1,11 @@
 #!/bin/sh
 mkdir bin
+#download fastqc
+wget https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.11.5.zip
+unzip fastqc_v0.11.5.zip
+rm fastqc_v0.11.5.zip
+cp ./FastQC/fastqc ./bin
+rm -rf ./FastQC
 #download picard
 wget https://github.com/broadinstitute/picard/releases/download/2.9.4/picard.jar
 mv picard.jar ./bin
