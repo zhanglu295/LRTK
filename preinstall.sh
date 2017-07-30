@@ -1,11 +1,12 @@
 #!/bin/sh
+#----------Download and install essential programs----------------------------
+#:<<BLOCK
 mkdir bin
 #download fastqc
 wget https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.11.5.zip
 unzip fastqc_v0.11.5.zip
 rm fastqc_v0.11.5.zip
-cp ./FastQC/fastqc ./bin
-rm -rf ./FastQC
+mv ./FastQC ./bin
 #download picard
 wget https://github.com/broadinstitute/picard/releases/download/2.9.4/picard.jar
 mv picard.jar ./bin
@@ -107,3 +108,19 @@ rm -rf ./links_v1.8.5
 ##Quast
 cd ./RequiredProgram/quast
 cp quast.py ../../bin
+cd ../../
+#--------------------------Essential Dataset download-----------------------------------------
+#BLOCK
+cd dataset
+wget http://cf.10xgenomics.com/supp/genome/refdata-GRCh38-2.1.0.tar.gz
+tar zxvf refdata-GRCh38-2.1.0.tar.gz
+#rm refdata-GRCh38-2.1.0.tar.gz
+mv refdata-GRCh38-2.1.0/fasta ./genome
+#rm -rf refdata-GRCh38-2.1.0
+
+
+
+
+
+
+
