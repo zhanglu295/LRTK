@@ -264,11 +264,11 @@ def CalculateNx_contig(infile,threshold):
             contig_clean=contig.strip('\n')
             contigseq=contigseq+len(contig_clean)
         else:
-            if contigseq>threshold and index!=0:
+            if contigseq>threshold*1000 and index!=0:
                 contig_list.append(contigseq)    
             contigseq=0
         index+=1
-    if contigseq>threshold:
+    if contigseq>threshold*1000:
         contig_list.append(contigseq)
     contig_list_new=sorted(contig_list,reverse=True)
     totallen=sum(contig_list_new)
