@@ -4,7 +4,7 @@
 # ### Import essential packages
 
 # In[1]:
-
+'''
 from collections import defaultdict
 import matplotlib
 import re
@@ -20,7 +20,7 @@ from itertools import groupby
 import sys
 import gzip
 import getopt
-
+'''
 # ## Input Contig alignment
 
 # In[2]:
@@ -1109,6 +1109,20 @@ def main():
            outfile.close()
     return None
 if __name__=="__main__":
+    import sys
     if len(sys.argv) == 1:
          helpinfo()
-    main()
+    else:
+        from collections import defaultdict
+        import matplotlib
+        import re
+        import numpy
+        import operator
+        from scipy import stats as sta
+        import seaborn as sns
+        import math
+        from scipy.interpolate import spline
+        from itertools import groupby
+        import gzip
+        import getopt
+        main()
