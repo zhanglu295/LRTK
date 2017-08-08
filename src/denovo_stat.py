@@ -255,11 +255,18 @@ def CalculateNx_contig_align(contig_dict):
 def CalculateNx_contig(infile,threshold):
     NX_contig=[]
     lastlength=0
-    contig_fasta=open(infile,"r")
+    if '.gz' in infile:
+         contig_fasta=gzip.open(infile,"r")
+    else:
+        contig_fasta=open(infile,"r")
     contig_list=[]
     contigseq=0
     index=0
-    for contig in contig_fasta:
+    for contigx in contig_fasta:
+        if '.gz' in infile:
+            contig=contigx.decode()
+        else:
+            contig=contigx 
         if contig[0]!='>':
             contig_clean=contig.strip('\n')
             contigseq=contigseq+len(contig_clean)
@@ -939,8 +946,8 @@ def helpinfo():
 
         Options:
                 -t --tsv, tsv files located in ./contigs_reports/all_alignments_*.tsv from QUAST(multiple inputs separated by comma)
-                -c --contig, contig fasta files (multiple inputs separated by comma, only used to calculate Contig NX)
-                -s --scaffold, scaffold fasta files (multiple inputs separated by comma, only used to calculate Scaffold NX)
+                -c --contig, compressed or uncompressed contig fasta files (multiple inputs separated by comma, only used to calculate Contig NX)
+                -s --scaffold, conpressed or uncompressed scaffold fasta files (multiple inputs separated by comma, only used to calculate Scaffold NX)
                 -r --reference, compressed or uncompressed reference genome fasta, if reference is missing, only alignment free statistics would be caluclated.
                 -i --info, .info file(three columns: scaffold id, contig id, order of contig in the scaffold)
                 -a --min_contig, the length of minimum contigs (kb)(only for calculating N50, the short contigs for calculating NA50,NC50 and NCA50 should be eliminated first by -m in QUAST)
@@ -951,7 +958,7 @@ def helpinfo():
     '''
     print(helpinfo)
 def main():
-    outfile=open('Assembly_summary.txt','w')
+    #outfile=open('Assembly_summary.txt','w')
     tsvlist=[]
     contiglist=[]
     scaffoldlist=[]
@@ -981,6 +988,7 @@ def main():
         if o == '-h' or o == '--help':
                 helpinfo()
                 sys.exit(-1)
+    outfile=open(outpath+'/Assembly_summary.txt','w')
     if reference==None:
            outfile.write('Statistics')
            outfile.write('\t')
