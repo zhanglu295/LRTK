@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # ### Import essential packages
@@ -456,7 +456,7 @@ def analyze_scaffold_info(info_file,align_contig):
         scaffold_dict5 = defaultdict(list) #contig alignment length,
         scaffold_dict6 = defaultdict(list) #contig start list,
         scaffold_dict7 = defaultdict(list) #contig end list,
-        total=0
+        total=0 
         for line in f_info:
             data = line.rsplit()
             scaffold_id = int(data[0])
@@ -932,7 +932,7 @@ def reflen_id(in_path_ref):
         else:
             singlen=singlen+len(lineinfo[:])
     chrlen.append(singlen)
-    return chrid,chrlen,singlen/1000000
+    return chrid,chrlen,sum(chrlen)/1000000
 def helpinfo():
     helpinfo=\
     '''
@@ -952,22 +952,25 @@ def helpinfo():
                 -i --info, .info file(three columns: scaffold id, contig id, order of contig in the scaffold)
                 -a --min_contig, the length of minimum contigs (kb)(only for calculating N50, the short contigs for calculating NA50,NC50 and NCA50 should be eliminated first by -m in QUAST)
                 -b --min_scaffold, the length of minimum scaffold (kb)
+                -p --prefix, the prefix of output file(default:Assembly_summary)
+                -l --label, Human-readable assembly names (multiple labels separated by comma).
 
                 -o --out, the path to output
                 -h --help, help info
     '''
     print(helpinfo)
 def main():
-    #outfile=open('Assembly_summary.txt','w')
     tsvlist=[]
     contiglist=[]
     scaffoldlist=[]
     reference=None
     infolist=[]
+    labellist=[]
     outpath=None
     min_contig=0
     min_scaffold=0
-    opts, args = getopt.gnu_getopt(sys.argv[1:], 't:c:s:r:i:a:b:o:h:', ['tsv', 'contig','scaffold' ,'reference', 'info' ,'min_contig','min_scaffold','out','help'])
+    prefix="Assembly_summary"
+    opts, args = getopt.gnu_getopt(sys.argv[1:], 't:c:s:r:i:l:a:b:p:o:h', ['tsv', 'contig','scaffold' ,'reference', 'info' ,'label','min_contig','min_scaffold','prefix','out','help'])
     for o, a in opts:
         if o == '-t' or o == '--tsv':
                 tsvlist=a.split(',') 
@@ -979,21 +982,29 @@ def main():
                 reference = a
         if o == '-i' or o == '--info':
                 infolist = a.split(',')
+        if o == '-l' or o == '--label':
+                labellist = a.split(',')
         if o =='-a' or o =='--min_contig':
                 min_contig = float(a)
         if o =='-b' or o =='--min_scaffold':
                 min_scaffold = float(a)
+        if o =='-p' or o =='--prefix':
+                prefix = a
         if o == '-o' or o == '--out':
                 outpath = a
         if o == '-h' or o == '--help':
                 helpinfo()
                 sys.exit(-1)
-    outfile=open(outpath+'/Assembly_summary.txt','w')
+    outfile=open(outpath+'/'+prefix+'.txt','w')
     if reference==None:
            outfile.write('Statistics')
            outfile.write('\t')
-           for index in range(len(contiglist)):
-               outfile.write('Sample'+str(index)+'\t')
+           if len(labellist)==0:
+               for index in range(len(contiglist)):
+                   outfile.write('Sample'+str(index+1)+'\t')
+           else:
+               for label in labellist:
+                   outfile.write(label+'\t')
            outfile.write('\n')
            outfile.write('Contig N50(kb)'+'\t')
            for contig in contiglist:
@@ -1008,8 +1019,12 @@ def main():
     else:
            outfile.write('Statistics')
            outfile.write('\t')
-           for index in range(len(contiglist)):
-               outfile.write('Sample'+str(index)+'\t')
+           if len(labellist)==0:
+               for index in range(len(contiglist)):
+                    outfile.write('Sample'+str(index+1)+'\t')
+           else:
+               for label in labellist:
+                   outfile.write(label+'\t')
            outfile.write('\n')
            print('Calculationg Contig N50...')
            outfile.write('Contig N50(kb)'+'\t')
@@ -1122,15 +1137,16 @@ if __name__=="__main__":
          helpinfo()
     else:
         from collections import defaultdict
-        import matplotlib
+        #import matplotlib
         import re
         import numpy
         import operator
         from scipy import stats as sta
-        import seaborn as sns
+        #import seaborn as sns
         import math
-        from scipy.interpolate import spline
+        #from scipy.interpolate import spline
         from itertools import groupby
         import gzip
         import getopt
         main()
+
