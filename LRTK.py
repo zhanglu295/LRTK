@@ -1,1165 +1,1130 @@
-import os, re, sys, gzip
+import os, sys, gzip
 import getopt
 import time
+import re
 import subprocess
-
-class baseinfo:
-	def __init__(self):
-		self.configdist = {}
-
-	def get_config(self, configFile):
-		o_config = open (configFile, 'r')
-		for config_line in o_config:
-			config_line = config_line.strip()
-			if len(config_line) == 0:
-				pass
-			elif config_line.startswith('#'):
-				pass
-			else:
-				(name, path) = re.split(" = ", config_line)
-				name = name.strip()
-				path = path.strip()
-				path = path.replace("'", "")
-				path = path.replace('"', '')
-
-				self.configdist[name] = path
-#				print (name, path)
-		o_config.close()
-
-	def get_path(self, name_variable):
-		if name_variable in self.configdist:
-			ABS_PATH = self.configdist[name_variable]
-			if ABS_PATH == "None":
-				ABS_PATH = " "
-			return ABS_PATH
-		else:
-			sys.stderr.write("ERROR - %s - %s is empty, please check the config file you inputted!\n" % (time.asctime(), name_variable))
-			sys.exit(-1)
-
-	def Ref(self):
-		abs_path = self.get_path('ref')
-		return abs_path
-
-	def Fq_aln_par(self):
-		abs_path = self.get_path('fq_aln_parameter')
-		return abs_path
-
-	def Fq_sam_par(self):
-		abs_path = self.get_path('fq_sampe_parameter')
-		return abs_path
-
-	def Bwa(self):
-		abs_path = self.get_path('bwa')
-		return abs_path
-	
-	def Barcode(self):
-		abs_path = self.get_path('barcode')
-		return abs_path
-
-	def Barcode_aln_par(self):
-		abs_path = self.get_path('barcode_aln_parameter')
-		return abs_path
-
-	def RG_info(self):
-		abs_path = self.get_path('RG')
-		return abs_path
-
-	def Samtools(self):
-		abs_path = self.get_path('samtools')
-		return abs_path
-
-	def Java(self):
-		abs_path = self.get_path('java')
-		return abs_path
-
-	def Picard(self):
-		abs_path = self.get_path('picard')
-		return abs_path
-
-	def Picardparameter(self):
-		abs_path = self.get_path('picard_parameter')
-		return abs_path
-
-	def Barcode_index(self):
-		abs_path = self.get_path('barcode_index')
-		return abs_path
-
-	def Genomesize(self):
-		abs_path = self.get_path('genomesize')
-		return abs_path
-
-	def Dbsnp(self):
-		abs_path = self.get_path('dbsnp')
-		return abs_path
-
-	def Gatk(self):
-		abs_path = self.get_path('gatk')
-		return abs_path
-
-	def HaplotypeCaller(self):
-		abs_path = self.get_path('HaplotypeCaller_par')
-		return abs_path
-	
-	def GenotypeGVCFs(self):
-		abs_path = self.get_path('GenotypeGVCFs_par')
-		return abs_path
-
-	def HapCut(self):
-		abs_path = self.get_path('HapCut')
-		return abs_path
-
-	def Fgbio(self):
-		abs_path = self.get_path('fgbio')
-		return abs_path
-
-	def HapCut_par(self):
-		abs_path = self.get_path('HapCut_par')
-		return abs_path
-
-
-class extract_barcode:
-	def revise(self, rawfq, outdir):
-		if rawfq.endswith('gz'):
-			o_rawfq = gzip.open(rawfq, 'rb')
-		else:
-			o_rawfq = open(rawfq, 'r')
-
-		(rawfq_path, rawfq_name) = os.path.split(rawfq)
-
-		b = rawfq_name
-		if(rawfq_name.find("fastq")):
-	#		rawfq_name.replace("fastq", "barcode", 1)
-			strinfo = re.compile('fastq')
-			b = strinfo.sub('barcode', rawfq_name)
-		else:
-	#		rawfq_name.replace("fq", "barcode", 1)
-			strinfo = re.compile('fq')
-			b = strinfo.sub('barcode', rawfq_name)
-
-		outfile = os.path.join(outdir, b)
-
-		if outfile.endswith('gz'):
-			barcode_out = gzip.open(outfile, 'wb')
-		else:
-			barcode_out = open(outfile, 'w')
-	
-		while True:
-			rawfq_id1 = o_rawfq.readline()
-			rawfq_seq1 = o_rawfq.readline()
-			rawfq_str1 = o_rawfq.readline()
-			rawfq_qua1 = o_rawfq.readline()
-
-			rawfq_id2 = o_rawfq.readline()
-			rawfq_seq2 = o_rawfq.readline()
-			rawfq_str2 = o_rawfq.readline()
-			rawfq_qua2 = o_rawfq.readline()
-
-			if len(rawfq_id1) == 0:
-				break
-			else:
-				if rawfq.endswith('gz'):
-					rawfq_id1 = rawfq_id1.decode()
-					rawfq_seq1 = rawfq_seq1.decode()
-					rawfq_str1 = rawfq_str1.decode()
-					rawfq_qua1 = rawfq_qua1.decode()
-
-				barcode_line = rawfq_id1 + rawfq_seq1[0:16] + '\n' + rawfq_str1 + rawfq_qua1[0:16] + "\n"
-				barcode_out.write(barcode_line.encode())
-
-		barcode_out.close()
-		return outfile
-
-class modify_barcode:
-	def replace_barcode(self, rawfq, barcode_sam, prefix):
-		samfile = open(barcode_sam, "r")
-		newfqfile1 = prefix + "_1.fq.gz"
-		newfqfile2 = prefix + "_2.fq.gz"
-
-		if rawfq.endswith('gz'):
-			o_rawfq = gzip.open(rawfq, "rb")
-		else:
-			o_rawfq = open(rawfq, "r")
-
-		newfq1_out = gzip.open(newfqfile1, 'wb')
-		newfq2_out = gzip.open(newfqfile2, 'wb')
-
-		while True:
-			barcodeinfo = samfile.readline()
-
-			rawfq_id1 = o_rawfq.readline()
-			rawfq_seq1 = o_rawfq.readline()
-			rawfq_str1 = o_rawfq.readline()
-			rawfq_qua1 = o_rawfq.readline()
-
-			rawfq_id2 = o_rawfq.readline()
-			rawfq_seq2 = o_rawfq.readline()
-			rawfq_str2 = o_rawfq.readline()
-			rawfq_qua2 = o_rawfq.readline()
-
-			if len(barcodeinfo) == 0:
-				break
-			else:
-				if rawfq.endswith('gz'):
-					rawfq_id1 = rawfq_id1.decode().strip()
-					rawfq_seq1 = rawfq_seq1.decode().strip()
-					rawfq_str1 = rawfq_str1.decode().strip()
-					rawfq_qua1 = rawfq_qua1.decode().strip()
-
-					rawfq_id2 = rawfq_id2.decode().strip()
-					rawfq_seq2 = rawfq_seq2.decode().strip()
-					rawfq_str2 = rawfq_str2.decode().strip()
-					rawfq_qua2 = rawfq_qua2.decode().strip()
-				barcodeinfo = barcodeinfo.strip()
-				barcodeinfo = re.split("\t", barcodeinfo)
-
-				id1 = re.split(" ", rawfq_id1)
-				if id1[0] != ('@' + barcodeinfo[0]):
-					sys.stderr.write("ERROR - %s and %s do not match!\n" % (id1[0], barcodeinfo[0]))
-				else:
-					barcode_ori = list(barcodeinfo[9])
-					realbarcodequa = str(barcodeinfo[10])
-					barcode_err = 0
-					if barcodeinfo[2] == "*" or re.search('N', barcodeinfo[9]):
-						barcode_err = 1
-						continue
-					for md in barcodeinfo[11:]:
-						if md.startswith("MD:Z"):
-							md = re.split(":", md)
-							alter = re.findall(r'\D', md[-1])
-							loci = re.findall(r'\d+', md[-1])
-							if len(alter) == 0:
-								pass
-							elif len(alter) > 1:
-								barcode_err = 1
-							else:
-								for i in range(len(alter)):
-									ix = int(loci[i]) + i
-									barcode_ori[ix] = alter[i]
-
-					if barcode_err == 0:
-						realbarcode = "".join(barcode_ori)
-					
-						newfq_seq1 = realbarcode + rawfq_seq1[23:]
-#					rsq = str(rawfq_seq1[24:])
-#					k = "\t".join([str(len(realbarcode)), str(len(rsq)), str(len(newfq_seq1))])
-#					print(k)
-						newfq_qua1 = realbarcodequa + rawfq_qua1[23:]
-						newfq1 = rawfq_id1 + "\n" + newfq_seq1 + "\n" + rawfq_str1 + "\n" + newfq_qua1 + "\n"
-						newfq_seq2 = str(realbarcode) + str(rawfq_seq2)
-						newfq_qua2 = str(realbarcodequa) + str(rawfq_qua2)
-						newfq2 = "\n".join([rawfq_id2, newfq_seq2, rawfq_str2, newfq_qua2, ""])
-#					k = "\t".join([str(len(newfq_seq2)), str(len(newfq_qua2))])
-#					print(k)
-
-						newfq1_out.write(newfq1.encode())
-						newfq2_out.write(newfq2.encode())
-
-		newfq1_out.close()
-		newfq2_out.close()
-
-		return(prefix)
-
-	def fill_barcode(self, original_sam, samtools_path, outdir = './'):
-		original_name = os.path.basename(original_sam)
-
-		new_sam = original_name.replace('sam', 'new.sam')
-		new_sam = os.path.join(outdir, new_sam)
-		new_bam = new_sam.replace('sam', 'bam')
-		sorted_bam = new_sam.replace('new.sam', 'sorted')
-
-		print(" ".join(["modified and sorted bam file:", sorted_bam + '.bam', "\n"]))
-		
-		o_original_sam = open(original_sam, 'r')
-		o_new_sam = open(new_sam, 'w')
-
-		convert_strand = {"a":"T", "c":"G", "g":"C", "t":"A"}
-
-		while True:
-			saminfo = o_original_sam.readline()
-			if len(saminfo) == 0:
-				break
-			else:
-				if saminfo.startswith('@'):
-					o_new_sam.write(saminfo)
-				else:
-					saminfo2 = o_original_sam.readline()
-					saminfo = saminfo.strip()
-					saminfo2 = saminfo2.strip()
-					saminfolist = re.split('\t', saminfo)
-					saminfolist2 = re.split('\t', saminfo2)
-					N_info = 0
-					for s in range(len(saminfolist)):
-						if 'BC:Z' in saminfolist[s]:
-							if re.search('N', saminfolist[s], re.IGNORECASE):
-								N_info = 1
-							if saminfolist[s] != saminfolist2[s]:
-								errinfo = saminfolist[0] + "\t" + saminfolist[s] + "\t" + saminfolist2[s] + "\n"
-								sys.stderr.write("Warning! The barcode of paired reads are not the same: %s\n" % errinfo)
-							BClist = list(saminfolist[s])
-							BClist[1] = "X"
-							for b in range(5,21):
-								if BClist[b].islower():
-									BClist[b] = convert_strand[BClist[b]]
-							BClist[21] = "-1"
-							saminfolist[s] = "".join(BClist[0:22])
-							saminfolist2[s] = saminfolist[s]
-
-					if N_info == 0:
-						saminfo = "\t".join(saminfolist) + '\n'
-						o_new_sam.write(saminfo)
-						saminfo2 = "\t".join(saminfolist2) + '\n'
-						o_new_sam.write(saminfo2)
-
-		o_original_sam.close()
-		o_new_sam.close()
-
-		shell = sorted_bam + ".sh"
-		oshell = open(shell, 'w')
-		shell_line = " ".join([samtools_path, "view -h -S -b", new_sam, ">", new_bam, "\n"])
-		oshell.write(shell_line)
-		shell_line = " ".join([samtools_path, "sort -m 1G", new_bam, sorted_bam, "\n"])
-		oshell.write(shell_line)
-#		shell_line = " ".join([samtools_path, "view -h", sorted_bam + '.bam > ', sorted_bam + '.sam\n'])
-#		oshell.write(shell_line)
-		shell_line = " ".join(["#rm", original_sam, new_sam, new_bam, "\n"])
-		oshell.write(shell_line)
-		oshell.close()
-
-		subprocess.call(["sh", shell])
-		return(sorted_bam + '.bam', sorted_bam + '.sam')
-
-class CFCR:
-	def split_and_sort_sam(self, sorted_bam, samtools_path, barcode_index, outdir = './'):
-		splitdir = os.path.join(outdir, "SamByChr")
-		if os.path.exists(splitdir):
-			pass
-		else:
-			os.mkdir(splitdir)
-
-		sorted_sam = sorted_bam.replace('bam', 'sam')
-		tmpshell = os.path.join(splitdir, "bam2sam.sh")
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join([samtools_path, "view -h", sorted_bam, ">", sorted_sam, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
-		subprocess.call(["sh", tmpshell])
-
-		chrdict = dict()
-		splitsamlist = list()
-		headersam = os.path.join(splitdir, 'header.sam')
-		outputsam = open(headersam, 'w')
-		rsorted_sam = open(sorted_sam, 'r')
-		issort = None
-		while True:
-			saminfo = rsorted_sam.readline()
-			if len(saminfo) == 0:
-				break
-			elif saminfo.startswith('@'):
-				if 'coordinate' in saminfo:
-					issort = 1
-				outputsam.write(saminfo)
-			else:
-				saminfo = saminfo.strip()
-				saminfolist = re.split("\t", saminfo)
-				if saminfolist[2] == '*':
-					pass
-				elif len(chrdict) == 0 or saminfolist[2] not in chrdict:
-					if len(chrdict) == 0 and issort == None:
-						sys.stderr.write("\n\nWarning: the inputted sam file might have not been sorted %s\n\n" % sorted_sam)
-					chrdict[saminfolist[2]] = saminfolist[2]
-					outputsam.close()
-					chrsam = os.path.join(splitdir, saminfolist[2] + '.sam')
-					outputsam = open(chrsam, 'w')
-					splitsamlist.append(chrsam)
-					sys.stderr.write("[ %s ] split sorted sam file, processing %s: %s ...\n" % (time.asctime(), saminfolist[2], chrsam))
-					### move the barcode info to the 12th column
-					saminfo = self.modify_saminfo(saminfo)
-					outputsam.write(saminfo)
-				else:
-					saminfo = self.modify_saminfo(saminfo)
-					outputsam.write(saminfo)
-		outputsam.close()
-		
-		samfilepath = os.path.join(splitdir, "sam.txt")
-		wsamfilepath = open(samfilepath, 'w')
-		for chrsam in splitsamlist:
-			chrsortedsam = chrsam.replace('sam', 'sorted_by_barcode.sam')
-			sys.stderr.write("[ %s ] sort sam file, processing %s ...\n" % (time.asctime(), chrsortedsam))
-			tmpshell = os.path.join(splitdir, "sort.sh")
-			wtmpshell = open(tmpshell, "w")
-			shell_line = " ".join(["sort", "-k12", chrsam, ">", chrsortedsam, "\n"])
-			wtmpshell.write(shell_line)
-			shell_line = " ".join(["rm", chrsam, "\n"])
-			wtmpshell.write(shell_line)
-			wtmpshell.close()
-			subprocess.call(["sh", tmpshell])
-			wsamfilepath.write("\n".join([chrsortedsam, ""]))
-		wsamfilepath.close()
-		return(samfilepath)
-
-	def modify_saminfo(self, orisaminfo):
-		saminfolist = re.split("\t", orisaminfo)
-		bcindex = 1
-		for n in range(len(saminfolist)):
-			if saminfolist[n].startswith("BX:Z"):
-				bcindex = n
-		if bcindex == 11 or bcindex == 1:
-			saminfo = "\t".join(saminfolist)
-		else:
-			newsaminfolist = saminfolist[0:11]
-			newsaminfolist.append(saminfolist[bcindex])
-			for n in range(11, bcindex):
-				newsaminfolist.append(saminfolist[n])
-			if bcindex == (len(saminfolist) - 1):
-				pass
-			else:
-				for n in range(bcindex+1, len(saminfolist)):
-					newsaminfolist.append(saminfolist[n])
-			saminfo = "\t".join(newsaminfolist)
-		saminfo = saminfo + "\n"
-		return(saminfo)
-
-	def calculate(self, sorted_by_barcode_sam_list, target_size, outdir = './'):
-		samfile_list = open(sorted_by_barcode_sam_list, 'r')
-		marked_molecule = os.path.join(outdir, "molecule.txt.gz")
-		wmarked_molecule = gzip.open(marked_molecule, 'wb')
-		allbarcode = dict()
-		mol_id = 0
-		barid = None
-		all_CF = 0
-		all_CR = 0
-		for sam in samfile_list:
-			sam = sam.strip()
-			sys.stderr.write("[ %s ] processing: %s \n" %(time.asctime(), sam))
-			samfile = open(sam, 'r')
-			while True:
-				saminfo = samfile.readline().strip()
-				saminfolist = re.split("\t", saminfo)
-
-				if len(saminfo) == 0:
-					break
-				elif saminfolist[5] == "*":
-#					sys.stderr.write("%s : unmapped reads would be ignored!\n" % saminfolist[0])
-					pass
-				else:
-					for bc in saminfolist[11:]:
-						if bc.startswith("BX"):
-							barid = bc
-							if bc not in allbarcode:
-								if len(allbarcode) == 0:
-									pass
-								else:
-									onekey = sorted(allbarcode)
-#								print(allbarcode[onekey[0]])
-									(mol_id, all_CF, all_CR) = self.FR(allbarcode[onekey[0]], mol_id, wmarked_molecule, barid, all_CF, all_CR)
-									allbarcode = dict()
-								allbarcode[bc] = saminfo
-							else:
-								allbarcode[bc] = allbarcode[bc] + "\n" + saminfo
-			samfile.close()
-			onekey = sorted(allbarcode)
-		if len(onekey) > 0:
-			(mol_id, all_CF, all_CR) = self.FR(allbarcode[onekey[0]], mol_id, wmarked_molecule, barid, all_CF, all_CR)
-		wmarked_molecule.close()
-
-		cfcr_stat_file = os.path.join(outdir, "CFCR.stat")
-		wcfcr_stat_file = open(cfcr_stat_file, 'w')
-		stat_line = "Item" + "\t" + "CF/CR length" + "\t" + "genome_size" + "\t" + "CF/CR depth\n"
-		wcfcr_stat_file.write(stat_line)
-		target_size = int(target_size)
-		CF_depth = all_CF / target_size
-		CR_depth = all_CR / target_size
-		stat_line = "CF:" + "\t" + str(all_CF) + "\t" + str(target_size) + "\t" + str(CF_depth) + "\n"
-		wcfcr_stat_file.write(stat_line)
-		stat_line = "CR:" + "\t" + str(all_CR) + "\t" + str(target_size) + "\t" + str(CR_depth) + "\n"
-		wcfcr_stat_file.write(stat_line)
-		wcfcr_stat_file.close()
-		return(cfcr_stat_file)
-
-	def FR(self, barcodeinfo, molecule_id, writemarker, barcodeid, cf, cr):
-		readid = dict()
-		onebarcodelist = re.split("\n", barcodeinfo)
-		for onebarcode in onebarcodelist:
-			eachlist = re.split("\t", onebarcode)
-			eachid = eachlist[0]
-			chr_id = eachlist[2]
-			start = eachlist[3]
-			readlength = len(eachlist[9])
-			start = int(start)
-			end = start + readlength - 1
-			reads = onebarcode
-			### merge pair-end reads into single fragment
-			if eachid not in readid:
-				readid[eachid] = [chr_id, start, end, onebarcode]
-				cr = cr + readlength
-			else:
-				if readid[eachid][0] != chr_id:
-#					sys.stderr.write("%s pair-end reads mapped to different chromosom, would be ignored.\n" % eachid)
-					readid.pop(eachid)
-					cr = cr - readlength
-				else:
-					start = min(readid[eachid][1], start)
-					end = max(readid[eachid][2], end)
-					dis = end - start + 1
-					cr = cr + readlength
-					if dis > 10000:
-#						sys.stderr.write("%s fragment length > 10kb, would be ignored.\n" % eachid)
-						readid.pop(eachid)
-					else:
-						reads = readid[eachid][3] + "\n" + reads
-						readid[eachid] = [chr_id, start, end, reads]
-
-		molecule = dict()
-		s = int(molecule_id) + 1
-		molecule_id = int(molecule_id) + 1
-		e = s + 1
-		for key in readid:
-			value = readid[key]
-			if molecule_id not in molecule:
-				molecule[molecule_id] = list()
-				molecule[molecule_id].append(value[0])	## chr id
-				molecule[molecule_id].append(value[1])  ## start
-				molecule[molecule_id].append(value[2])  ## end
-				molecule[molecule_id].append(value[3])  ## reads info
-			else:
-				isnew = 1
-				for i in range(s, e):
-					if isnew == 0:
-						pass
-					else:
-						if molecule[i][0] == value[0]:
-							dist = molecule[i][1] - value[1]
-							if dist < 50000:
-								isnew = 0
-								molecule[i][1] = min(molecule[i][1], value[1])
-								molecule[i][2] = max(molecule[i][2], value[2])
-								molecule[i][3] = molecule[i][3] + "\n" + value[3]
-				if isnew == 1:
-					molecule_id = molecule_id + 1
-					molecule[molecule_id] = list()
-					molecule[molecule_id].append(value[0])
-					molecule[molecule_id].append(value[1])
-					molecule[molecule_id].append(value[2])
-					molecule[molecule_id].append(value[3])
-#					molecule[molecule_id]["chrid"] = value[0]
-#					molecule[molecule_id]["start"] = value[1]
-#					molecule[molecule_id]["end"] = value[2]
-#					molecule[molecule_id]["reads"] = value[3]
-					s = s + 1
-
-		for i in range(s, e):
-#			readlist = re.split("\n", molecule[i]["reads"])
-			if i in molecule:
-#				print(molecule[i][3])
-				readlist = re.split("\n", molecule[i][3])
-				cf = cf + molecule[i][2] - molecule[i][1] + 1
-				for rl in readlist:
-					outinfo = str(i) + "\t" + barcodeid + "\t" + rl + "\n"
-					writemarker.write(outinfo.encode())
-
-		return(molecule_id, cf, cr)
-
-class OUTERSOFT:
-	def bwa_barcode(self, barcode, barcode_sam, bwa_path, bwa_parameter, ref_path):
-		outdir = os.path.dirname(barcode_sam)
-		shell = os.path.join(outdir, "barcode.align.sh")
-		oshell = open(shell, 'w')
-		sai = barcode_sam + '.sai'
-		shell_line = " ".join([bwa_path, 'aln', ref_path, barcode, '-f', sai, bwa_parameter, "\n"])
-		oshell.write(shell_line)
-		shell_line = " ".join([bwa_path, 'samse', ref_path, sai, barcode, "| grep -v '^@' > " + barcode_sam + "\nrm", sai, "\n"])
-		oshell.write(shell_line)
-		oshell.close()
-		print(shell)
-		subprocess.call(["sh", shell])
-		return(barcode_sam)
-
-	def bwa_fq(self, fq1, fq2, outprefix, bwa_path, bwa_aln_parameter, bwa_sam_parameter, RGinfo):
-		sai1 = outprefix + '.1.sai'
-		sai2 = outprefix + '.2.sai'
-		outsam = outprefix + '.sam'
-		
-		sys.stderr.write("[ %s ] fq alignment starts\n" % (time.asctime()))
-		outdir = os.path.dirname(fq1)
-		shell = os.path.join(outdir, "fq.aln.sh")
-		oshell = open(shell, 'w')
-		shell_line = " ".join([bwa_path, 'aln', ref_path, fq1, bwa_aln_parameter, '-f', sai1, '&\n'])
-		oshell.write(shell_line)
-		shell_line = " ".join([bwa_path, 'aln', ref_path, fq2, bwa_aln_parameter, '-f', sai2, '&\nwait\n'])
-		oshell.write(shell_line)
-		#shell_line = " ".join([bwa_path, 'sampe', ref_path, sai1, sai2, fq1, fq2, "|", samtools_path + ' view -h -S -b - > ' + outbam + "\n"])
-		RGinfo = '"' + RGinfo + '"'
-		shell_line = " ".join([bwa_path, 'sampe', bwa_sam_parameter, '-r', RGinfo, ref_path, sai1, sai2, fq1, fq2, ">", outsam + "\nrm", sai1, sai2, "\n"])
-		oshell.write(shell_line)
-		oshell.close()
-		print(shell)
-
-		subprocess.call(["sh", shell])
-		sys.stderr.write("[ %s ] fq alignment finish\n" % (time.asctime()))
-		return(outsam)
-
-	def picard_markdup(self, oribam, markedbam, java_path, picard_path, picard_paramter):
-		metrics = markedbam.replace('bam', 'metrics.txt')
-
-		bai = oribam.replace('bam', 'bai')
-		isbai = 0
-		if os.path.exists(bai):
-			isbai = 1
-		else:
-			bai = oribam + '.bai'
-			if os.path.exists(bai):
-				isbai = 1
-		if isbai:
-			pass
-		else:
-			sys.stderr.write("bai not found, will produce bai file for bam automatically: %s\n" % bai)
-			tmpshell = bai + '.sh'
-			wtmpshell = open(tmpshell, 'w')
-			shell_line = " ".join([java_path, '-jar', picard_path, 'BuildBamIndex', "I=" + oribam, "O=" + bai, "\n"])
-			wtmpshell.write(shell_line)
-			print(shell_line)
-			wtmpshell.close()
-			subprocess.call(["sh", tmpshell])
-			subprocess.call(["rm", tmpshell])
-
-		sys.stderr.write("[ %s ] marking duplication ... \n" % (time.asctime()))
-		markedbamdir = os.path.dirname(markedbam)
-		tmpshell = os.path.join(markedbamdir, 'mark_duplicate.sh')
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join([java_path, '-jar', picard_path, 'MarkDuplicates', "I=" + oribam, "O=" + markedbam, "M=" + metrics, picard_paramter, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
-		subprocess.call(["sh", tmpshell])
-		sys.stderr.write("[ %s ] marked bam file has been written to %s\n" % (time.asctime(), markedbam))
-		return(markedbam)
-
-	def phasing(self, vcf, phase_path, phase_parameter):
-
-		print >> sys.stderr, "phasing starts at %s" % (time.asctime())
-
-		print >> sys.stderr, "phasing ends at %s" % (time.asctime())
-
-def LRTK_usage(_Command_):
+import random
+import string
+import glob
+from collections import defaultdict
+
+def LRTK_usage(_Command1_, _Command2_ = "0"):
 	helpinfo = dict()
+	subhelpinfo = dict()
 
 	usage_all = \
 	'''
 
-	A pipeline to run 10x data
-	Version: 0.01
-	Depends: python (>=3.0), bwa, picard (>=2.9), java (>=1.8), samtools, gatk (>= 3.0)
-	Date: 2017-06-01
+	LRTK: Linked Reads ToolKit, a toolkit for 10X genomic data analysis, including Basic data preparation, Resequencing analysis and De novo assembly
+	Version: 1.0.0
+	Dependents: Python (>=3.0), BWA, Picard (>=2.9), java (>=1.8), SAMtools, GATK (>= 3.0)
+	Last Updated Date: 2017-06-01
 	Contact: meijp@foxmail.com
 
 	Usage: python LRTK.py <command> [options]
 
-	Command:
-			all	run the whole pipeline
-			pre	prepare fastq files for alignment, including step 0, 1 and 2
-			aln	alignment, including step 3 and 4
-			cal	calculation, including step 5 and 6
-			var	variation call, including step 7
-			pha	phasing, including step 8
+	Command:        
+                        Config     Generate configuration file
+                        Basicall   Execute the whole pipeline of basic data preparation
+                        Reseqall   Execute the whole pipeline of resequencing
+                        Denovoall  Execute the whole pipeline of de novo assembly
+                        Clean      delete temporary files
+                                                
+                        Basic      Execute selected steps for basic data preparation 
+                        Reseq      Execute selected steps for resequencing
+                        Denovo     Execute selected steps for de novo assembly
 
-	Note: To use LRTK, you need to first prepare configuration file.
+	
+	Note: LRTK is allowed to modify configure file to include customerized parameters and datasets.
 
 	'''
 	helpinfo["N"] = usage_all
 
-	all_options = \
-	'''
-	
-	Depends: python (>=3.0), bwa, picard (>=2.9), java (>=1.8), samtools, gatk (>= 3.0)
-	Usage: python LRTK.py all [options]
-
-	Options:
-		-c configure file
-		-f fq, compressed and uncompressed fastq files are both available.
-		-o output dir
-		-s alignment result of barcode sequences in fq files, only sam file is available.
-		-e barcode sequences extracted from raw fq file, standard fastq format.
-		-p prefix of barcode modified fq file, prefix_1.fq.gz and prefix_2.fq.gz must be available.
-		-M sorted bam file
-		-P file list of sam files that sorted by barcode
-		-k duplication marked bam file
-		-L list of chromosomes that would call variations
-		-u unphased vcf
-		-S steps you want to run[default: 0-]. Only single number(0~8), single number with '-'(0~8-), and two numbers seperated by '-'(0-8) are available
-			eg. -S 1  :	run step 1 only
-				-S 0- :	run steps from 0 to 8
-				-S 3-5:	run steps from 3 to 5
-			step 0: extract barcode sequences from raw fq file
-			step 1: map to the full barcode set, input: fastq file produced in stpe 0
-			step 2: modify barcode info based on the result of step 1
-			step 3: map to the whole genome, input: paired fastq files produced in step 2
-			step 4: sort and markduplication, input: bam file produced in step 3
-			step 5: split (by chromosome) and sort (by barcode) the bam file, input: bam file produced in step 4
-			step 6: calculate CF and CR, input: file list of sam files that sorted by barcode
-			step 7: variant call, using GATK, input: bam file produced in step 4
-			step 8: phase
-
-	'''
-	helpinfo["all"] = all_options
-
-	pre_options = \
+	Config_options = \
 	'''
 
-	Depends: python (>=3.0), bwa
-	Usage: python LRTK.py pre [options]
-
-	Options:
-		-c configure file
-		-f fq, compressed and uncompressed fastq files are both available.
-		-o output dir
+	-o --outputdir, the path of output directory
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
 
 	'''
-	helpinfo["pre"] = pre_options
+	helpinfo["Config"] = Config_options
 
-	aln_options = \
+	Clean_options = \
 	'''
 
-	Depends: python (>=3.0), bwa, picard (>=2.9), samtools, java (>=1.8)
-	Usage: python LRTK.py aln [options]
-
-	Options:
-		-c configure file
-		-p prefix of barcode modified fq file, prefix_1.fq.gz and prefix_2.fq.gz must be available.
-		-o output dir
+	-i --input, the list of sample, the first column must be sample id
+	-o --outputdir, the path of the output directory used in LRTK
+	-D --delete, list and delete all temporary files [default: only list not delete]
 
 	'''
-	helpinfo["aln"] = aln_options
+	helpinfo["Clean"] = Clean_options
 
-	cal_options = \
+	Basicall_options = \
 	'''
 
-	Depends: python (>=3.0), samtools
-	Usage: python LRTK.py cal [options]
-
-	Options:
-		-c configure file
-		-k duplication marked bam file
-		-o output dir
-
-	'''
-	helpinfo["cal"] = cal_options
-
-	var_options = \
-	'''
-	
-	Depends: python (>=3.0), java (>=1.8), GATK (>=3.0)
-	Usage: python LRTK.py var [options]
-
-	Options:
-		-c configure file
-		-k duplication marked bam file
-		-L list of chromosomes that would call variations
-		-t number of jobs running concurrently when calling variations[default: 3]
-		-o output dir
+	-i --input, the input file containing fastq information (The input file contains three columns:1.Sample ID;2.Library ID;3. Path to sample fastqs).
+	-o --outputdir, the path to output
+	-p --parallel, the number of CPU allowed to use [default: 1]
+	-N --noBX, generate additional fq file that has BX info or not [default: yes]
+	-c --config, configuration file [default: outdir/config/Basic.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
 
 	'''
-	helpinfo["var"] = var_options
+	helpinfo["Basicall"] = Basicall_options
 
-	pha_options = \
+	Basic_options = \
 	'''
 
-	Depends: python (>=3.0), HapCut
-	Usage: python LRTK.py pha [options]
-
-	Options:
-		-c configure file
-		-k duplication marked bam file
-		-u unphased vcf
-		-o output dir
+	CFQ     generate clean fastq files and correct barcode error
+ 	ALN     reads alignment by BWA (must complete CFQ)
+ 	MARK    merge all bam files belong to the same library of each sample, and barcode aware PCR duplication removal (must complete ALN)
+ 	STAT    calculate QC statistics, including Cf, Cr, MuFL, NFP etc. (must complete CFQ and ALN)
+	MERGE   merge all bam files belong to the same sample
 
 	'''
-	helpinfo["pha"] = pha_options
+	helpinfo["Basic"] = Basic_options
 
-	if _Command_ in helpinfo:
-		print (helpinfo[_Command_])
+	CFQ_options = \
+	'''
+
+	-i --input, the input file containing fastq information (The input file contains three columns:1.Sample ID;2.Library ID;3. Path to sample fastqs).
+	-o --outputdir, the path to output
+	-p --parallel, the number of CPU allowed to use [default: 1]
+	-N --noBX, generate additional fq file that has BX info or not [default: yes]
+	-c --config, configuration file [default: outdir/config/Basic.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
+	'''
+	subhelpinfo["CFQ"] = CFQ_options
+
+	ALN_options = \
+	'''
+	-i --input, the input file containing the clean fastqs generated by CFQ and sample infomation (The input file contains four columns:1.Sample ID;2.Library ID;3.Path to read1 clean fastqs;4.Path to read2 clean fastqs).
+	-o --outputdir, the path to output
+	-p --parallel, the number of CPU allowed to use [default: 1]
+	-c --config, configuration file [default: outdir/config/Basic.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
+	'''
+	subhelpinfo["ALN"] = ALN_options
+
+	MAK_options = \
+	'''
+	-i --input, the input file containing the information of bam files (The input file contains two columns:1.Sample Id;2.Library Id;3.Path to bam)
+	-o --outputdir, the path to output
+	-p --parallele, the number of CPU allowed to use [default: 1]
+	-c --config, configuration file [default: outdir/config/Basic.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
+	'''
+	subhelpinfo["MARK"] = MAK_options
+
+	STAT_options = \
+	'''
+	-i --input, the input file that contains the SAM/BAM files generated by MAK (The input file contains two columns:1.Sample Id;2.Library Id;3.Path to bam)
+	-o --outputdir, the path to output
+	-c --config, configuration file [default: outdir/config/Basic.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
+	'''
+	subhelpinfo["STAT"] = STAT_options
+
+	MERGE_options = \
+	'''
+	-i --input, the input file that contains the SAM/BAM files generated by MAK (The input file contains two columns:1.Sample Id;2.Library Id;3.Path to bam)
+	-o --outputdir, the path to output
+	-c --config, configuration file [default: outdir/config/Basic.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
+	'''
+	subhelpinfo["MERGE"] = MERGE_options
+
+	Reseqall_options = \
+	'''
+	-i --input, the input file that contains the BAM files generated by Basicall or ALN
+	-o --outputdir, the path to output
+	-L --chrlist, list of chromosome [e.g. chr1, chr2, chrX, default: outdir/config/chrlist.txt]
+	-p --parallel, the number of CPU allowed to use [default: 1]
+	-c --config, configuration file [default: outdir/config/Reseq.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
+	'''
+	helpinfo["Reseqall"] = Reseqall_options
+
+	Reseq_options = \
+	'''
+	Varcall     call SNVs and Indels by GATK
+	SVcall      call structure variantion by GROC-SVs
+	Phasing     phasing variants by HapCUT2
+	'''
+	helpinfo["Reseq"] = Reseq_options
+
+	Varcall_options = \
+	'''
+	-i --input, the input file that contains the BAM files generated by Basicall or ALN
+	-o --outputdir, the output directory path
+	-L --chrlist, list of chromosomes [e.g.chr1,chr2,chrX, default: outdir/config/chrlist.txt]
+	-p --parallel, the number of CPU allowed to use [default: 1]
+	-c --config, configuration file [default: outdir/config/Reseq.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
+	'''
+	subhelpinfo["Varcall"] = Varcall_options
+
+	SVcall_options = \
+	'''
+	-i --input, the input path that contains the BAM files generated by Basicall or ALN
+	-o --outputdir, the path to output
+	-c --config, configuration file [default: outdir/config/Reseq.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
+	'''
+	subhelpinfo["SVcall"] = SVcall_options
+
+	Phasing_options = \
+	'''
+	-i --input, the input path that contains the BAM files generated by Basicall or ALN
+	-v --vcf, unphased vcf file generated by Varcall or the other variant callers, both compressed or uncompressed vcf files are allowed
+	-o --outputdir, the path to output
+	-c --config, configuration file [default: outdir/config/Reseq.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
+	'''
+	subhelpinfo["Phasing"] = Phasing_options
+
+	Denovoall_options = \
+	'''
+	-i --input, the input path
+	-o --outputdir, the path to output
+	-c --config, configuration file [default: outdir/config/Denovo.config]
+	-s --softwarepath, the path of directory where all software were installed [default: dirname(LRTK.py)/bin]
+	-d --datasetpath, dataset directory [default: dirname(LRTK.py)/dataset]
+	'''
+	helpinfo["Denovoall"] = Denovoall_options
+
+	Denovo_options = \
+	'''
+
+	'''
+
+	if _Command1_ in helpinfo:
+		if _Command2_ in subhelpinfo:
+			print (subhelpinfo[_Command2_])
+		else:
+			print (helpinfo[_Command1_])
 	else:
+		sys.stderr.write("\n\n\t### Unused command line option: %s\n" % _Command1_)
 		print (helpinfo["N"])
 	sys.exit(1)
 
-def isset(v):
-	try:
-		type(eval(v))
-	except:
-		return 0
+def run_parallel(shell_file, maxnum):
+	rshell_file = open(shell_file, 'r')
+	shell_list = list()
+	for shf in rshell_file:
+		shf = shf.strip()
+		shell_list.append(shf)
+	finishNum = 0
+	pn = 0
+	ts = 0
+	Shell_Num = len(shell_list)
+	maxnum = int(maxnum)
+	shell_line = None
+	shelldir = os.path.dirname(shell_file) + "/tmp"
+	if os.path.isdir(shelldir):
+		pass
 	else:
-		return 1
+		os.mkdir(shelldir)
+	while finishNum < Shell_Num:
+		if pn < maxnum:
+			if pn == 0:
+				tmpshell = os.path.join(shelldir, "tmp." + str(ts) + ".sh")
+				wtmpshell = open(tmpshell, 'w')
+				shell_line = "sh " + shell_list[finishNum] + " &\n"
+			else:
+				shell_line = shell_line + "sh " + shell_list[finishNum] + " &\n"
+			pn = pn + 1
+
+		finishNum = finishNum + 1
+		if pn == maxnum:
+			shell_line = shell_line + "wait\necho Done\n"
+			wtmpshell.write(shell_line)
+			wtmpshell.close()
+			subprocess.call(["sh", tmpshell])
+			pn = 0
+			ts = ts + 1
+			sys.stderr.write("Command: %s\n" % shell_line)
+
+	if pn > 0:
+		tmpshell = os.path.join(shelldir, "tmp." + str(ts) + ".sh")
+		wtmpshell = open(tmpshell, 'w')
+		shell_line = shell_line + "wait\necho Done\n"
+		wtmpshell.write(shell_line)
+		wtmpshell.close()
+		subprocess.call(["sh", tmpshell])
+		sys.stderr.write("Command: %s\n" % shell_line)
+
+def check_info(result, attribute):
+	if attribute == "file":
+		if os.path.isfile(result):
+			pass
+		else:
+			sys.stderr.write("[ %s ] %s does not exist!\n" % (time.asctime(), result))
+			sys.exit(-1)
+	elif attribute == "dir":
+		if os.path.isdir(result):
+			pass
+		else:
+			os.makedirs(result)
+	elif attribute == "num":
+		if re.search(r'\D', str(result)):
+			sys.stderr.write("Error: string was found for parallel number, only number is accepted for -p %s \n" % result)
+			sys.exit(-1)
 
 if __name__ == '__main__':
 	if len(sys.argv) == 1:
 		LRTK_usage("N")
 	elif len(sys.argv) == 2:
 		LRTK_usage(sys.argv[1])
+	elif len(sys.argv) == 3:
+		LRTK_usage(sys.argv[1], sys.argv[2])
 
-	configurationFile = None
-	step = '0-'
-	outputDir = './'
-	inputfq = None
-	newprefix = None
-	barcodesam = None
-	Sortedsam = None
-	Sortedbam = None
-	Samfilepath = None
-	Markedbam = None
-	Chrlist = None
-	UnphaseVcf = None
-	ParallelNum = 3
+	InputFqList = None
+	OutputDir = None
+	ParalleleNum = 1
 
-	opts, args = getopt.gnu_getopt(sys.argv[2:], 'c:f:o:s:S:e:p:M:P:k:L:u:t:')
-	for o, a in opts:
-		if o == '-c': configurationFile = a
-		if o == '-f': inputfq = a
-		if o == '-o': outputDir = a
-		if o == '-s': barcodesam = a
-		if o == '-S': step = a
-		if o == '-e': extract_barcode = a
-		if o == '-p': newprefix = a
-		if o == '-M': Sortedbam = a
-		if o == '-P': Samfilepath = a
-		if o == '-k': Markedbam = a
-		if o == '-L': Chrlist = a
-		if o == '-u': UnphaseVcf = a
-		if o == '-t': ParallelNum = a
+	CleanFqList = None
+	Basic_config = None
+	Reseq_config = None
 
+	SoftwarePathDir = os.path.dirname(os.path.abspath(sys.argv[0])) + '/bin'
+	DatasetPahtDir = os.path.dirname(os.path.abspath(sys.argv[0])) + '/dataset'
+###################################################### Config ##############################################################
+	runConfig = 0
+	if sys.argv[1] == "Config":
+		runConfig = 1
+		opts, args = getopt.gnu_getopt(sys.argv[runConfig:], 'o:s:d:', ['outputdir', 'softwarepath', 'datasetpath'])
+		for o, a in opts:
+			if o == '-o' or o == '--outputdir':
+				OutputDir = str(a)
+				if OutputDir.endswith("/"):
+					OutputDir = OutputDir[0:(len(OutputDir)-1)]
+			if o == '-s' or o == '--softwarepath':
+				SoftwarePathDir = a
+			if o == '-d' or o == '--datasetpath':
+				DatasetPahtDir = a
 
-	if configurationFile == None:
-		sys.stderr.write("config.txt not found!\n")
-		sys.exit(-1)
-	elif os.path.isfile(configurationFile) and os.path.exists(configurationFile):
-		pass
-	else:
-		sys.stderr.write("config.txt not found!\n")
-		sys.exit(-1)
+		config_dir = OutputDir + "/config"
+		check_info(config_dir, "dir")
+		check_info(SoftwarePathDir, "dir")
 
-	if os.path.exists(outputDir):
-		pass
-	else:
-		os.mkdir(outputDir)
+		Basic_config = config_dir + "/Basic.config"
+		Reseq_config = config_dir + "/Reseq.config"
+		ScriptDir = os.path.abspath(os.path.dirname(sys.argv[0]))
+		Create_config_script = ScriptDir + "/src/create_config.py"
+		ctmpshell = config_dir + "/tmp.sh"
+		wctmpshell = open(ctmpshell, 'w')
+		shell_line = " ".join(["python", Create_config_script, "Basic", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir + "\n"])
+		wctmpshell.write(wctmpshell)
+		shell_line = " ".join(["python", Create_config_script, "Reseq", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir + "\n"])
+		wctmpshell.write(wctmpshell)
+		wctmpshell.close()
+		subprocess.call(["sh", wctmpshell])
+		subprocess.call(["rm", wctmpshell])
+#		subprocess.call(["python", Create_config_script, "Basic", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir])
+#		subprocess.call(["python", Create_config_script, "Reseq", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir])
+		sys.stderr.write("\n\tconfiguration files for Basic, Reseq have been generated: %s, %s\n\n" % (Basic_config, Reseq_config))
 
-	_process_ = list()
-	if '-' in step:
-		sp = re.split('-', step)
-		if len(sp) == 1:
-			_process_ = range(int(sp[0]), 8)
-		elif len(sp) == 2:
-			_process_ = range(int(sp[0]), (int(sp[1]) + 1))
+####################################################### Config ##############################################################
+
+####################################################### Clean  ##############################################################
+	runClean = 0
+	delete_tmp = 0
+	Original_sample = None
+	sampledict = dict()
+	if sys.argv[1] == "Clean":
+		runClean = 1
+		opts, args = getopt.gnu_getopt(sys.argv[runConfig:], 'i:o:D', ['input' ,'outputdir', 'delete'])
+		for o, a in opts:
+			if o == '-i' or o == '--input':
+				Original_sample = a
+			if o == '-o' or o == '--outputdir':
+				OutputDir = str(a)
+				if OutputDir.endswith("/"):
+					OutputDir = OutputDir[0:(len(OutputDir)-1)]
+			if o == '-D' or o == '--delete':
+				delete_tmp = 1
+		check_info(Original_sample, "file")
+		rOriginal_sample = open(Original_sample, 'r')
+		randomstring = "CLEAN_" + ''.join(random.sample(string.ascii_letters + string.digits, 8))
+		tmpshelldir = OutputDir + "/tmp"
+		check_info(tmpshelldir, "dir")
+		CLEANfile = tmpshelldir + "/" + randomstring + ".tmpfile"
+		wCLEANfile = open(CLEANfile, 'w')
+		for sample in rOriginal_sample:
+			sampleinfo = re.split('\t', sample.strip())
+			if sampleinfo[0] not in sampledict:
+				sampledir = os.path.join(OutputDir, sampleinfo[0])
+				for root, dirs, files in os.walk(sampledir):
+					for name in files:
+						mn = os.path.join(root, name)
+						if re.search("tmp", mn):
+							if re.search("SamByChr", mn):
+								pass
+							else:
+								shell_line = mn + "\n"
+								wCLEANfile.write(shell_line)
+					for name in dirs:
+						mn = os.path.join(root, name)
+						if re.search("tmp", mn):
+							if mn.endswith("tmp"):
+								pass
+							else:
+								shell_line = mn + "\n"
+								wCLEANfile.write(shell_line)
+				sampledict[sampleinfo[0]] = sampleinfo[0]
+		wCLEANfile.close()
+		rOriginal_sample.close()
+
+		if delete_tmp == 1:
+			rCLEANfile = open(CLEANfile, 'r')
+			for deletefile in rCLEANfile:
+				subprocess.call(["rm -rf", deletefile.strip()])
+				sys.stderr.write("delete %s ...\n" % deletefile.strip())
 		else:
-			sys.stderr.write("wrong command for -S: only single number(0~8), single number with '-'(0~8-), and two numbers seperated by '-'(0-8) are available\n")
-			sys.exit(-1)
-	else:
-		if re.match(r'\d+', step):
-			_process_.append(int(step))
-		else:
-			sys.stderr.wirte("wrong command for -S: only single number(0~8), single number with '-'(0~8-), and two numbers seperated by '-'(0-8) are available\n")
-			sys.exit(-1)
+			sys.stderr.write("\n\tAll temporary files has been listed in %s, you can delete files that listed in it yourself!\n\n\tawk '{print \"rm -rf\", $1}' %s | sh -x\n\n" % (CLEANfile, CLEANfile))
+####################################################### Clean  ##############################################################
 
-	O = OUTERSOFT()
-	G = baseinfo()
-	G.get_config(configurationFile)
+####################################################### CFQ #################################################################
+	runCFQ = 0
+	addBX = 1
+	if sys.argv[1] == "Basicall":
+		runCFQ = 1
+	elif sys.argv[1] == "Basic" and sys.argv[2] == "CFQ":
+		runCFQ = 2
+	if runCFQ > 0:
+		opts, args = getopt.gnu_getopt(sys.argv[runCFQ:], 'i:o:p:c:s:d:N', ['input', 'outputdir', 'parallel', 'config', 'softwarepath', 'datasetpath', 'noBX'])
+		for o, a in opts:
+			if o == '-i' or o == '--input':
+				InputFqList = a
+			if o == '-o' or o == '--outputdir':
+				OutputDir = str(a)
+				if OutputDir.endswith("/"):
+					OutputDir = OutputDir[0:(len(OutputDir)-1)]
+			if o == '-p' or o == '--parallel':
+				ParalleleNum = a
+			if o == '-c' or o == '--config':
+				Basic_config = a
+			if o == '-N' or o == '--noBX':
+				addBX = 0
+			if o == '-s' or o == '--softwarepath':
+				SoftwarePathDir = a
+			if o == '-d' or o == '--datasetpath':
+				DatasetPahtDir = a
 
-	if sys.argv[1] == "pre" or (sys.argv[1] == "all" and 0 in _process_):		### extract barcode info from original fq file
-		sys.stderr.write("\n... ... step 0 ... ... %s \n\n" % time.asctime())
-		if os.path.exists(inputfq):
+		check_info(InputFqList, "file")
+		check_info(OutputDir, "dir")
+		check_info(int(ParalleleNum), "num")
+		if int(ParalleleNum) > 1:
+			sys.stderr.write("The maximum number of %s CPUs would be invoked at the same time\n" % ParalleleNum)
+
+		ScriptDir = os.path.abspath(os.path.dirname(sys.argv[0]))
+		print(ScriptDir)
+		CFQ_script = ScriptDir + "/src/clean_fastq.py"
+		if os.path.isfile(CFQ_script):
 			pass
 		else:
-			sys.stderr.write("input fq not found!\n")
+			sys.stderr.write("%s does not exist, the software package might not been downloaded perfectly!" % CFQ_script)
 			sys.exit(-1)
+		if Basic_config != None and os.path.isfile(Basic_config):
+			pass
+		else:
+			config_dir = OutputDir + "/config"
+			check_info(config_dir, "dir")
+			Basic_config = config_dir + "/Basic.config"
+			sys.stderr.write("configuration file has not been provided or does not exist, it would be generated automatically: %s" % Basic_config)
+			Create_config_script = ScriptDir + "/src/create_config.py"
+			subprocess.call(["python", Create_config_script, "Basic", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir])
 
-		R = extract_barcode()
-		sys.stderr.write("[ %s ] extract original barcode info from %s\n" % (time.asctime(), inputfq))
-		extract_barcode = R.revise(inputfq, outputDir)
-		sys.stderr.write("[ %s ] original barcode had been extracted, output file has been written to: %s\n\n" % (time.asctime(), extract_barcode))
-	if sys.argv[1] == "pre" or (sys.argv[1] == "all" and 1 in _process_):	## align to the barcode set, modify the barcode sequence in the raw fq file
-		sys.stderr.write("\n... ... step 1 ... ... %s \n\n" % time.asctime())
-		if os.path.exists(extract_barcode):
-			pass
-		else:
-			sys.stderr.write("\nstep 0 is not finished, please run step 0 again or provide extraced bracode info of the original 10x fq using '-e'\n\n")
-			sys.exit(-1)
+		rInputFqList = open(InputFqList, 'r')
+		Result_List_Dir = OutputDir + "/Result_list"
+		check_info(Result_List_Dir, 'dir')
+		CleanFqList = Result_List_Dir + "/Basic_ALN_input.txt"
+		Basic_CFQ_Result_List = Result_List_Dir + "/Basic_CFQ_result.txt"
+		wCleanFqList = open(CleanFqList, 'w')
+		wBasic_CFQ_Result_List = open(Basic_CFQ_Result_List, 'w')
+		randomstring = "CFQ_" + ''.join(random.sample(string.ascii_letters + string.digits, 8))
+		tmpshelldir = OutputDir + "/tmp"
+		check_info(tmpshelldir, "dir")
+		CFQshell = tmpshelldir + "/" + randomstring + ".sh"
+		wCFQshell = open(CFQshell, 'w')
+		for fqinfo in rInputFqList:
+			fqinfo = fqinfo.strip()
+			(SampleId, LibraryId, FqPath) = re.split("\t", fqinfo)
+			FqPathBasename = os.path.basename(FqPath)
+			b = str(FqPathBasename)
+			if b[(len(b)-9):] == ".fastq.gz":
+				b = b[0:(len(b)-9)]
+			elif b[(len(b)-6):] == ".fq.gz":
+				b = b[0:(len(b)-6)]
+			elif b[(len(b)-6):] == ".fastq":
+				b = b[0:(len(b)-6)]
+			elif b[(len(b)-3):] == ".fq":
+				b = b[0:(len(b)-3)]
+			FqPathBasename = b
 
-		barcoderef = G.Barcode()
-		bracode_aln_parameter = G.Barcode_aln_par()
-		bwa_path = G.Bwa()
-		barcodesam = extract_barcode.replace("gz", "sam")
-		sys.stderr.write("[ %s ] align to the barcode set\n" % time.asctime())
-		barcodesam = O.bwa_barcode(extract_barcode, barcodesam, bwa_path, bracode_aln_parameter, barcoderef)
-		sys.stderr.write("\n[ %s ] align to the barcode set, output sam file has been written to: %s\n" % (time.asctime(), barcodesam))
-	if sys.argv[1] == "pre" or (sys.argv[1] == "all" and 2 in _process_):
-		sys.stderr.write("\n... ... step 2 ... ... %s \n\n" % time.asctime())
-		if inputfq != None and os.path.exists(inputfq):
-			pass
-		else:
-			sys.stderr.write("\ninput fq not found, please provide the original 10x fq file using '-f'\n\n")
-			sys.exit(-1)
-		if barcodesam != None and os.path.exists(barcodesam):
-			pass
-		else:
-			sys.stderr.write("\nstep 1 is not finished, please run step 1 again or provide barcode sam file using '-s'\n\n")
-			sys.exit(-1)
+			clean_FQ_output_dir = OutputDir + "/" + SampleId + "/" + LibraryId + "/" + FqPathBasename
+			newFqPathBasename = FqPathBasename
+			check_info(clean_FQ_output_dir, "dir")
 
-		M = modify_barcode()
-		if isset(newprefix):
-			pass
-		else:
-			newprefix = os.path.basename(inputfq)
-			if newprefix.find("fastq"):
-				strinfo = re.compile('fastq')
-				newprefix = strinfo.sub('new.fq', newprefix)
+			shelldir = clean_FQ_output_dir + "/shell"
+			check_info(shelldir, "dir")
+			FQshell = shelldir + "/ALN." + SampleId + ".sh"
+			runFQshell = FQshell + "\n"
+			wCFQshell.write(runFQshell)
+			wFQshell = open(FQshell, 'w')
+			if addBX == 0:
+				shell_line = " ".join(["python", CFQ_script, "-i", FqPath, "-o", clean_FQ_output_dir, "-c", Basic_config, "-N", "\n"])
 			else:
-				strinfo = re.compile('fq')
-				newprefix = strinfo.sub('new.fq', newprefix)
-			newprefix = newprefix.replace('.gz', '')
-			newprefix = os.path.join(outputDir, newprefix)
-		sys.stderr.write("[ %s ] replace barcode info\n" % time.asctime())
-		newprefix = M.replace_barcode(inputfq, barcodesam, newprefix)
-		sys.stderr.write("[ %s ] barcode has been replaced, and new fq files have been written to %s_[1/2].fq.gz\n" % (time.asctime(), newprefix))
-	if sys.argv[1] == "aln" or (sys.argv[1] == "all" and 3 in _process_):
-		sys.stderr.write("\n... ... step 3 ... ... %s \n\n" % time.asctime())
-		if newprefix == None:
-			sys.stderr.write("\nstep 2 is not finished, please run step 2 again or provide the prefix of the paired fq files unsing '-p'\n\n")
-			sys.exit(-1)
-		else:
-			fq1 = newprefix + "_1.fq.gz"
-			fq2 = newprefix + "_2.fq.gz"
-			if os.path.exists(fq1) and os.path.exists(fq2):
-				pass
-			else:
-				sys.stderr.write("\nstep 2 is not finished, please run step 2 again or provide the prefix of the paired fq files unsing '-p'\n\n")
-				sys.exit(-1)
+				shell_line = " ".join(["python", CFQ_script, "-i", FqPath, "-o", clean_FQ_output_dir, "-c", Basic_config, "\n"])
+			wFQshell.write(shell_line)
+			wFQshell.close()
+			newfq1 = clean_FQ_output_dir + "/" + newFqPathBasename + "_1.fq.gz"
+			newfq2 = clean_FQ_output_dir + "/" + newFqPathBasename + "_2.fq.gz"
+			newinfo = "\t".join([SampleId, LibraryId, newfq1, newfq2]) + "\n"
+			wCleanFqList.write(newinfo)
 
-			
-		ref_path = G.Ref()
-		fq_aln_parameter = G.Fq_aln_par()
-		fq_sam_parameter = G.Fq_sam_par()
-		eachRGinfo = G.RG_info()
-		bwa_path = G.Bwa()
-		samtools = G.Samtools()
+			BX_fq_path = clean_FQ_output_dir + "/" + newFqPathBasename + "BX.fq.gz"
+			barcode_log_path = clean_FQ_output_dir + "/barcode_correct.log"
+			FastQC_result_path = clean_FQ_output_dir + "/fastqc"
+			Result_log = "\t".join([SampleId, LibraryId, "fq including barcode info:", BX_fq_path + "\n"])
+			wBasic_CFQ_Result_List.write(Result_log)
+			Result_log = "\t".join([SampleId, LibraryId, "barcode correction info:", barcode_log_path + "\n"])
+			wBasic_CFQ_Result_List.write(Result_log)
+			Result_log = "\t".join([SampleId, LibraryId, "fastQC result:", FastQC_result_path + "\n"])
+			wBasic_CFQ_Result_List.write(Result_log)
+			Result_log = "\t".join([SampleId, LibraryId, "fq without barcode info:", newfq1, newfq2 + "\n"])
+			wBasic_CFQ_Result_List.write(Result_log)
+		wCleanFqList.close()
+		wCFQshell.close()
+		wBasic_CFQ_Result_List.close()
 
-		sys.stderr.write("[ %s ] align to the genome %s\n" % (time.asctime(), ref_path))
-		original_sam = O.bwa_fq(fq1, fq2, newprefix, bwa_path, fq_aln_parameter, fq_sam_parameter, eachRGinfo)
-		sys.stderr.write("[ %s ] alignment finished. Original sam file has been writeen to %s\n\n" % (time.asctime(), original_sam))
+		run_parallel(CFQshell, ParalleleNum)
+		sys.stderr.write("[ %s ] files generated by 'Basic CFQ' have been listed in \n\n\t %s \n\n" % (time.asctime(), Basic_CFQ_Result_List))
+		sys.stderr.write("[ %s ] new fq has been listed in \n\n\t %s \n\n\tAnd it's the input file in the 'Basic ALN' step\n\n" % (time.asctime(), CleanFqList))
+####################################################### CFQ #################################################################
 
-		M = modify_barcode()
-		samtools = G.Samtools()
-		samdir = os.path.dirname(original_sam)
-		(Sortedbam, Sortedsam) = M.fill_barcode(original_sam, samtools, samdir)
-	if sys.argv[1] == "aln" or (sys.argv[1] == "all" and 4 in _process_):
-		sys.stderr.write("\n... ... step 4 ... ... %s \n\n" % time.asctime())
-		if Sortedbam == None:
-			sys.stderr.write("\nstep 3 is not finished, please run step 3 again or provide sorted bam files unsing '-M'\n\n")
-			sys.exit(-1)
-		elif os.path.exists(Sortedbam):
+####################################################### ALN #################################################################
+	runALN = 0
+	BamFileList = None
+	if sys.argv[1] == "Basicall":
+		runALN = 1
+	elif sys.argv[1] == "Basic" and sys.argv[2] == "ALN":
+		runALN = 2
+	if runALN > 0:
+		opts, args = getopt.gnu_getopt(sys.argv[runALN:], 'i:o:p:c:s:d:', ['input', 'outputdir', 'parallel', 'config', 'softwarepath', 'datasetpath'])
+		for o, a in opts:
+			if runALN == 2:
+				if o == '-i' or o == '--input':
+					CleanFqList = a
+			if o == '-o' or o == '--outputdir':
+				OutputDir = str(a)
+				if OutputDir.endswith("/"):
+					OutputDir = OutputDir[0:(len(OutputDir)-1)]
+			if o == '-p' or o == '--parallel':
+				ParalleleNum = a
+			if o == '-c' or o == '--config':
+				Basic_config = a
+			if o == '-s' or o == '--softwarepath':
+				SoftwarePathDir = a
+			if o == '-d' or o == '--datasetpath':
+				DatasetPahtDir = a
+
+		check_info(CleanFqList, "file")
+		check_info(OutputDir, "dir")
+		check_info(ParalleleNum, "num")
+
+		if int(ParalleleNum) > 1:
+			sys.stderr.write("The maximum number of %s CPUs would be invoked at the same time\n" % ParalleleNum)
+
+		ScriptDir = os.path.dirname(os.path.abspath(sys.argv[0]))
+		ALN_script = ScriptDir + "/src/alignment.py"
+		if os.path.isfile(ALN_script):
 			pass
 		else:
-			sys.stderr.write("%s is not exists!\n" % (Sortedbam))
+			sys.stderr.write("%s does not exist, the software package might not been downloaded perfectly!" % ALN_script)
 			sys.exit(-1)
-
-		javapath = G.Java()
-		picardpath = G.Picard()
-		picardparameter = G.Picardparameter()
-		Markedbam = Sortedbam.replace('bam', 'marked.bam')
-		sys.stderr.write("[ %s ] mark duplication ... \n" % time.asctime())
-		Markedbam = O.picard_markdup(Sortedbam, Markedbam, javapath, picardpath, picardparameter)
-		if os.path.exists(Markedbam):
-			sys.stderr.write("[ %s ] duplication reads have been marked, and the output has been written to %s \n" % (time.asctime(), Markedbam))
-		else:
-			sys.stderr.write("\nERROR: %s has not been created, please check the warning info and try again\n\n" % Markedbam)
-			sys.exit(-1)
-	if sys.argv[1] == "cal" or (sys.argv[1] == "all" and 5 in _process_):
-		sys.stderr.write("\n... ... step 5 ... ... %s \n\n" % time.asctime())
-		if Markedbam == None:
-			sys.stderr.write("\nstep 4 is not finished, please run step 4 again or provide marked bam file unsing '-k'\n\n")
-			sys.exit(-1)
-		elif os.path.exists(Markedbam):
+		if Basic_config != None and os.path.isfile(Basic_config):
 			pass
 		else:
-			sys.stderr.write("%s is not exists!\n" % (Markedbam))
-			sys.exit(-1)
-		
-		samtools_path = G.Samtools()
-		barcode_index = G.Barcode_index()
-		C = CFCR()
-		samdir = os.path.dirname(Markedbam)
-		sys.stderr.write("[ %s ] split sam file by chr, sort sam file by barcode ... \n" % time.asctime())
-		Samfilepath = C.split_and_sort_sam(Markedbam, samtools_path, barcode_index, samdir)
-		sys.stderr.write("[ %s ] splited and sorted sam file list: %s \n\n" % (time.asctime(), Samfilepath))
-	if sys.argv[1] == "cal" or (sys.argv[1] == "all" and 6 in _process_):
-		sys.stderr.write("\n... ... step 6 ... ... %s \n\n" % time.asctime())
-		if Samfilepath == None:
-			sys.stderr.write("\nstep 5 is not finished, please run step 5 again or provide sorted_by_barcode bam list unsing '-P'\n\n")
-			sys.exit(-1)
-		elif os.path.exists(Samfilepath):
+			config_dir = OutputDir + "/config"
+			check_info(config_dir, "dir")
+			Basic_config = config_dir + "/Basic.config"
+			Create_config_script = ScriptDir + "/src/create_config.py"
+			subprocess.call(["python", Create_config_script, "Basic", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir])
+
+		rCleanFqList = open(CleanFqList, 'r')
+		Result_List_Dir = OutputDir + "/Result_list"
+		check_info(Result_List_Dir, 'dir')
+		BamFileList = Result_List_Dir + "/Basic_MARK_input.txt"
+		Basic_ALN_Result_List = Result_List_Dir + "/Basic_ALN_result.txt"
+		wBamFileList = open(BamFileList, 'w')
+		wBasic_ALN_Result_List = open(Basic_ALN_Result_List, 'w')
+		randomstring = "ALN_" + ''.join(random.sample(string.ascii_letters + string.digits, 8))
+		tmpshelldir = OutputDir + "/tmp"
+		check_info(tmpshelldir, "dir")
+		ALNshell = tmpshelldir + "/" + randomstring + ".sh"
+		wALNshell = open(ALNshell, 'w')
+		for fqinfo in rCleanFqList:
+			fqinfo = fqinfo.strip()
+			(SampleId, LibraryId, FqPath1, FqPath2) = re.split("\t", fqinfo)
+			check_info(FqPath1, 'file')
+			check_info(FqPath2, 'file')
+			FqPathBasename = os.path.basename(FqPath1)
+			FqPathBasename = FqPathBasename.replace("_1.fq.gz", '')
+
+			Fqprefix = FqPath1.replace("_1.fq.gz", '')
+
+			BAM_output_dir = OutputDir + "/" + SampleId + "/" + LibraryId + "/" + FqPathBasename
+			check_info(BAM_output_dir, "dir")
+
+			RGinfo = "'@RG\\tID:" + LibraryId + "\\tPL:10x\\tPU:" + FqPathBasename + "\\tLB:" + LibraryId + "\\tSM:" + SampleId + "'"
+
+			shelldir = BAM_output_dir + "/shell"
+			check_info(shelldir, "dir")
+			BAMshell = shelldir + "/ALN." + SampleId + ".sh"
+			runBAMshell = BAMshell + "\n"
+			wALNshell.write(runBAMshell)
+			wBAMshell = open(BAMshell, 'w')
+			shell_line = " ".join(["python", ALN_script, "-i", Fqprefix, "-o", BAM_output_dir, "-r", RGinfo, "-c", Basic_config, "\n"])
+			wBAMshell.write(shell_line)
+			wBAMshell.close()
+			bam = Fqprefix + ".sorted.bam"
+			baminfo = "\t".join([SampleId, LibraryId, bam]) + "\n"
+			wBamFileList.write(baminfo)
+
+			Result_log = "\t".join([SampleId, LibraryId, "alignment result:", bam + "\n"])
+			wBasic_ALN_Result_List.write(Result_log)
+		rCleanFqList.close()
+		wBamFileList.close()
+		wBasic_ALN_Result_List.close()
+		wALNshell.close()
+
+		run_parallel(ALNshell, ParalleleNum)
+		sys.stderr.write("[ %s ] files generated by 'Basic ALN' have been listed in \n\n\t %s \n\n" % (time.asctime(), Basic_ALN_Result_List))
+		sys.stderr.write("[ %s ] bam files of each lane have been listed in \n\n\t %s \n\n\tAnd it's the input file in the 'Basic MARK' step\n\n" % (time.asctime(), BamFileList))
+####################################################### ALN #################################################################
+
+####################################################### MARK #################################################################
+	runMAK = 0
+	MarkBamFileList = None
+	if sys.argv[1] == "Basicall":
+		runMAK = 1
+	elif sys.argv[1] == "Basic" and sys.argv[2] == "MARK":
+		runMAK = 2
+	if runMAK > 0:
+		opts, args = getopt.gnu_getopt(sys.argv[runMAK:], 'i:o:p:c:s:d:', ['input', 'outputdir', 'parallel', 'config', 'softwarepath', 'datasetpath'])
+		for o, a in opts:
+			if runMAK == 2:
+				if o == '-i' or o == '--input':
+					BamFileList = a
+			if o == '-o' or o == '--outputdir':
+				OutputDir = str(a)
+				if OutputDir.endswith("/"):
+					OutputDir = OutputDir[0:(len(OutputDir)-1)]
+			if o == '-p' or o == '--parallel':
+				ParalleleNum = a
+			if o == '-c' or o == '--config':
+				Basic_config = a
+			if o == '-s' or o == '--softwarepath':
+				SoftwarePathDir = a
+			if o == '-d' or o == '--datasetpath':
+				DatasetPahtDir = a
+
+		check_info(BamFileList, "file")
+		check_info(OutputDir, "dir")
+		check_info(ParalleleNum, "num")
+
+		if int(ParalleleNum) > 1:
+			sys.stderr.write("The maximum number of %s CPUs would be invoked at the same time\n" % ParalleleNum)
+
+		ScriptDir = os.path.dirname(os.path.abspath(sys.argv[0]))
+		MAK_script = ScriptDir + "/src/mergeMark_bam.py"
+		if os.path.isfile(MAK_script):
 			pass
 		else:
-			sys.stderr.write("%s does not exist!\n" % (Samfilepath))
+			sys.stderr.write("%s does not exist, the software package might not been downloaded perfectly!" % ALN_script)
 			sys.exit(-1)
-			
-		C = CFCR()
-		samdir = os.path.dirname(Samfilepath)
-		genomesize = G.Genomesize()
-		sys.stderr.write("[ %s ] calculating CF/CR ... \n" % time.asctime())
-		stattxt = C.calculate(Samfilepath, genomesize, samdir)
-		sys.stderr.write("[ %s ] CF/CR has been written to %s \n" % (time.asctime(), stattxt))
-	if sys.argv[1] == "var" or (sys.argv[1] == "all" and 7 in _process_):
-		sys.stderr.write("\n... ... stpe 7 ... ... %s \n\n" % time.asctime())
-		if Markedbam == None:
-			sys.stderr.write("\nstep 4 is not finished, please run step 4 again or provide marked bam files unsing '-k'\n\n")
-			sys.exit(-1)
-		elif os.path.exists(Markedbam):
+		if Basic_config != None and os.path.isfile(Basic_config):
 			pass
 		else:
-			sys.stderr.write("%s does not exist!\n" % (Markedbam))
-			sys.exit(-1)
+			config_dir = OutputDir + "/config"
+			check_info(config_dir, "dir")
+			Basic_config = config_dir + "/Basic.config"
+			Create_config_script = ScriptDir + "/src/create_config.py"
+			subprocess.call(["python", Create_config_script, "Basic", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir])
 
-		if Chrlist == None:
-			sys.stderr.write("\nprovide chr list unsing '-L'\n\n")
-			sys.exit(-1)
-		elif os.path.exists(Chrlist):
-			pass
-		else:
-			sys.stderr.write("%s does not exist!\n" % (Chrlist))
-			sys.exit(-1)
-
-		javapath = G.Java()
-		gatkpath = G.Gatk()
-		ref = G.Ref()
-		dbsnp = G.Dbsnp()
-		HaplotypeCaller_par = G.HaplotypeCaller()
-		GenotypeGVCFs_par = G.GenotypeGVCFs()
-
-		bamdir = os.path.dirname(Markedbam)
-		vcfdir = os.path.join(bamdir, "vcf")
-		if os.path.exists(vcfdir) and os.path.isdir(vcfdir):
-			pass
-		else:
-			sys.stderr.write("%s does not exist!\n" % vcfdir)
-			os.mkdir(vcfdir)
-
-		shelldir = os.path.join(vcfdir, "shell")
-		if os.path.exists(shelldir) and os.path.isdir(shelldir):
-			pass
-		else:
-			os.mkdir(shelldir)
-
-		Chrshell = list()
-		rChrlist = open(Chrlist, 'r')
-		ChrGvcflist = list()
-		chrpriority = None
-		AllChrVcf = None
-		for ch in rChrlist:
-			ch = ch.strip()
-			chrshell = os.path.join(shelldir, ch + ".vcf.sh")
-			chrgvcf = os.path.join(vcfdir, ch + ".gvcf")
-			chrvcf = os.path.join(vcfdir, ch + ".vcf")
-			wchrshell = open(chrshell, 'w')
-			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "-T HaplotypeCaller -R", ref, "-I", Markedbam, "-U --emitRefConfidence GVCF" + HaplotypeCaller_par + "--dbsnp", dbsnp, "-L", ch, "-o", chrgvcf, "\n"])
-			wchrshell.write(shell_line)
-			shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "-T GenotypeGVCFs --variant", chrgvcf, "-o", chrvcf, "--dbsnp", dbsnp, GenotypeGVCFs_par, "-L", ch, "\n"])
-			ChrGvcflist.append(chrvcf)
-			wchrshell.write(shell_line)
-			wchrshell.close()
-
-			Chrshell.append(chrshell)
-			if chrpriority == None:
-				chrpriority = str(ch)
-				AllChrVcf = "--variant:" + ch + " " + chrgvcf
-			else:
-				chrpriority = chrpriority + "," + str(ch)
-				AllChrVcf = AllChrVcf + " --variant:" + ch + " " + chrgvcf
-
-		ShellNum = len(Chrshell)
-		## ParallelNum = 3
-		finishNum = 0
-		pn = 0
-		ts = 0
-		shell_line = None
-		while finishNum < ShellNum:
-			if pn < ParallelNum:
-				if pn == 0:
-					tmpshell = os.path.join(shelldir, "tmp." + ts + ".sh")
-					wtmpshell = open(tmpshell, 'w')
-					shell_line = "sh " + Chrshell[finishNum] + " &\n"
+		bamDict = defaultdict(dict)
+		rBamFileList = open(BamFileList, 'r')
+		for eachBamfile in rBamFileList:
+			eachBamfile = eachBamfile.strip()
+			(SampleId, LibraryId, bamfile) = re.split("\t", eachBamfile)
+			check_info(bamfile, 'file')
+			if SampleId in bamDict:
+				if LibraryId in bamDict[SampleId]:
+					bamDict[SampleId][LibraryId] = bamDict[SampleId][LibraryId] + "\n" + bamfile
 				else:
-					shell_line = shell_line + "sh " + Chrshell[finishNum] + " &\n"
-				pn = pn + 1
+					bamDict[SampleId][LibraryId] = bamfile
+			else:
+				bamDict[SampleId][LibraryId] = bamfile
+		rBamFileList.close()
 
-			finishNum = finishNum + 1
-			if pn == ParallelNum:
-				wtmpshell.write(shell_line)
-				wtmpshell.close()
-				subprocess.call(["sh", tmpshell])
-				pn = 0
-				ts = ts + 1
-				sys.stderr.write("Command: %s\n" % shell_line)
+		tmpshelldir = OutputDir + "/tmp"
+		check_info(tmpshelldir, "dir")
+		MAKshell = tmpshelldir + "/MAK_" + ''.join(random.sample(string.ascii_letters + string.digits, 8)) + ".sh"
+		wMAKshell = open(MAKshell, 'w')
+		Result_List_Dir = OutputDir + "/Result_list"
+		check_info(Result_List_Dir, 'dir')
+		Basic_MARK_Result_List = Result_List_Dir + "/Basic_MARK_result.txt"
+		MarkBamFileList = Result_List_Dir + "/Basic_STAT_MERGE_input.txt"
+		wBasic_MARK_Result_List = open(Basic_MARK_Result_List, 'w')
+		wMarkBamFileList = open(MarkBamFileList, 'w')
 
-		if pn > 0:
-			tmpshell = os.path.join(shelldir, "tmp." + ts + ".sh")
-			wtmpshell = open(tmpshell, 'w')
-			wtmpshell.write(shell_line)
-			wtmpshell.close()
-			subprocess.call(["sh", tmpshell])
-			sys.stderr.write("Command: %s\n" % shell_line)
+		for samplekey in bamDict.keys():
+			for librarykey in bamDict[samplekey].keys():
+				library_bam_dir = OutputDir + "/" + samplekey + "/" + librarykey
+				check_info(library_bam_dir, "dir")
+				library_bam = OutputDir + "/" + samplekey + "/" + librarykey + "/bam.txt"
+				wbam = open(library_bam, 'w')
+				allbam = bamDict[samplekey][librarykey] + "\n"
+				wbam.write(allbam)
+				wbam.close()
 
-		UnphaseVcf = os.path.join(bamdir, "all.vcf")
-		tmpshell = os.path.join(shelldir, "combine_vcf.sh")
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "-genotypeMergeOptions PRIORITIZE -priority", chrpriority, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
-		subprocess.call(["sh", tmpshell])
+				shelldir = OutputDir + "/" + samplekey + "/" + librarykey + "/shell"
+				check_info(shelldir, "dir")
+				BAMshell = shelldir + "/merge_mark_bam.sh"
+				runBAMshell = BAMshell + "\n"
+				wMAKshell.write(runBAMshell)
 
-		sys.stderr.write("[ %s ] vcf file has been writeen to %s\n\n" % (time.asctime(), UnphaseVcf))
+				wBAMshell = open(BAMshell, 'w')
+				markedbam = library_bam_dir + "/" + librarykey + ".sorted.merged.marked.bam"
+				shell_line = " ".join(["python", MAK_script, "-i", library_bam, "-o", markedbam, "-c", Basic_config, "\n"])
+				wBAMshell.write(shell_line)
+				wBAMshell.close()
+				baminfo = "\t".join([samplekey, librarykey, markedbam]) + "\n"
+				wMarkBamFileList.write(baminfo)
 
-	if sys.argv[1] == "pha" or (sys.argv[1] == "all" and 8 in _process_):
-		if Markedbam == None:
-			sys.stderr.write("\nstep 4 is not finished, please run step 4 again or provide marked bam files unsing '-k'\n\n")
-			sys.exit(-1)
-		elif os.path.exists(Markedbam):
+				markedlog = library_bam_dir + "/" + librarykey + ".sorted.merged.marked.metrics.txt"
+				Result_log = "\t".join([SampleId, LibraryId, "merged & marked bam:", markedbam + "\n"])
+				wBasic_MARK_Result_List.write(Result_log)
+				Result_log = "\t".join([SampleId, LibraryId, "duplication info:", markedlog + "\n"])
+				wBasic_MARK_Result_List.write(Result_log)
+		wMAKshell.close()
+		wMarkBamFileList.close()
+		wBasic_MARK_Result_List.close()
+
+		run_parallel(MAKshell, ParalleleNum)
+		sys.stderr.write("[ %s ] files generated by 'Basic MARK' have been listed in \n\n\t %s \n\n" % (time.asctime(), Basic_MARK_Result_List))
+		sys.stderr.write("[ %s ] merged and duplication marked bam files of each library have been listed in \n\n\t %s \n\n\tAnd it's the input file in the STAT and MERGE step\n\n" % (time.asctime(), MarkBamFileList))
+####################################################### MARK #################################################################
+
+####################################################### STAT ################################################################
+	runSTAT = 0
+	if sys.argv[1] == "Basicall":
+		runSTAT = 1
+	elif sys.argv[1] == "Basic" and sys.argv[2] == "STAT":
+		runSTAT = 2
+	if runSTAT > 0:
+		opts, args = getopt.gnu_getopt(sys.argv[runSTAT:], 'i:o:p:c:s:d:', ['input', 'outputdir', 'parallel', 'config', 'softwarepath', 'datasetpath'])
+		for o, a in opts:
+			if runSTAT == 2:
+				if o == '-i' or o == '--input':
+					MarkBamFileList = a
+			if o == '-o' or o == '--outputdir':
+				OutputDir = str(a)
+				if OutputDir.endswith("/"):
+					OutputDir = OutputDir[0:(len(OutputDir)-1)]
+			if o == '-p' or o == '--parallel':
+				ParalleleNum = a
+			if o == '-c' or o == '--config':
+				Basic_config = a
+			if o == '-s' or o == '--softwarepath':
+				SoftwarePathDir = a
+			if o == '-d' or o == '--datasetpath':
+				DatasetPahtDir = a
+
+		check_info(MarkBamFileList, "file")
+		check_info(OutputDir, "dir")
+		check_info(ParalleleNum, "num")
+		if int(ParalleleNum) > 1:
+			sys.stderr.write("The maximum number of %s CPUs would be invoked at the same time\n" % ParalleleNum)
+
+		ScriptDir = os.path.dirname(os.path.abspath(sys.argv[0]))
+		STAT_script = ScriptDir + "/src/calculate.py"
+		if os.path.isfile(STAT_script):
 			pass
 		else:
-			sys.stderr.write("%s does not exist!\n" % (Markedbam))
+			sys.stderr.write("%s does not exist, the software package might not been downloaded perfectly!" % STAT_script)
 			sys.exit(-1)
-
-		if UnphaseVcf == None:
-			sys.stderr.write("\nstep 7 is not finished, please run step 7 again or provide unphased vcf file using '-u'\n\n")
-			sys.exit(-1)
-		elif os.path.exists(UnphaseVcf):
+		if Basic_config != None and os.path.isfile(Basic_config):
 			pass
 		else:
-			sys.stderr.write("%s does not exist!\n" % (UnphaseVcf))
+			config_dir = OutputDir + "/config"
+			check_info(config_dir, "dir")
+			Basic_config = config_dir + "/Basic.config"
+			Create_config_script = ScriptDir + "/src/create_config.py"
+			subprocess.call(["python", Create_config_script, "Basic", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir])
+
+		rMarkBamFileList = open(MarkBamFileList, 'r')
+		tmpshelldir = OutputDir + "/tmp"
+		check_info(tmpshelldir, "dir")
+		STATshell = tmpshelldir + "/STAT_" + ''.join(random.sample(string.ascii_letters + string.digits, 8)) + ".sh"
+		wSTATshell = open(STATshell, 'w')
+		Result_List_Dir = OutputDir + "/Result_list"
+		check_info(Result_List_Dir, 'dir')
+		CFCRFileList = Result_List_Dir + "/Basic_STAT_result.txt"
+		wCFCRFileList = open(CFCRFileList, 'w')
+		for eachBamfile in rMarkBamFileList:
+			eachBamfile = eachBamfile.strip()
+			(SampleId, LibraryId, bamfile) = re.split("\t", eachBamfile)
+			check_info(bamfile, 'file')
+
+			bamdir = os.path.dirname(bamfile)
+			Result_log = "\t".join([SampleId, LibraryId, "CF&CR info:", bamdir + "/CFCR.stat\n"])
+			wCFCRFileList.write(Result_log)
+			Result_log = "\t".join([SampleId, LibraryId, "molecule info:", bamdir + "/molecule.full.gz\n"])
+			wCFCRFileList.write(Result_log)
+			shelldir = bamdir + "/shell"
+			check_info(shelldir, "dir")
+			Eachshell = shelldir + "/stat.sh"
+			runEachshell = Eachshell + "\n"
+			wSTATshell.write(runEachshell)
+
+			wEachshell = open(Eachshell, 'w')
+			shell_line = " ".join(["python", STAT_script, "-i", bamfile, "-o", bamdir, "-c", Basic_config, "\n"])
+			wEachshell.write(shell_line)
+			wEachshell.close()
+		rMarkBamFileList.close()
+		wSTATshell.close()
+		wCFCRFileList.close()
+
+		run_parallel(STATshell, ParalleleNum)
+		sys.stderr.write("[ %s ] files generated by 'Basic STAT' have been listed in \n\n\t %s \n\n" % (time.asctime(), CFCRFileList))
+####################################################### STAT ################################################################
+
+####################################################### MERGE ###############################################################
+	FinalBamFileList = None
+	runMERGE = 0
+	if sys.argv[1] == "Basicall":
+		runMERGE = 1
+	elif sys.argv[1] == "Basic" and sys.argv[2] == "MERGE":
+		runMERGE = 2
+	if runMERGE > 0:
+		opts, args = getopt.gnu_getopt(sys.argv[runMERGE:], 'i:o:p:c:s:d:', ['input', 'outputdir', 'parallel', 'config', 'softwarepath', 'datasetpath'])
+		for o, a in opts:
+			if o == '-i' or o == '--input':
+				MarkBamFileList = a
+			if o == '-o' or o == '--outputdir':
+				OutputDir = str(a)
+				if OutputDir.endswith("/"):
+					OutputDir = OutputDir[0:(len(OutputDir)-1)]
+			if o == '-p' or o == '--parallel':
+				ParalleleNum = a
+			if o == '-c' or o == '--config':
+				Basic_config = a
+			if o == '-s' or o == '--softwarepath':
+				SoftwarePathDir = a
+			if o == '-d' or o == '--datasetpath':
+				DatasetPahtDir = a
+
+		check_info(MarkBamFileList, "file")
+		check_info(OutputDir, "dir")
+		check_info(ParalleleNum, "num")
+		if int(ParalleleNum) > 1:
+			sys.stderr.write("The maximum number of %s CPUs would be invoked at the same time\n" % ParalleleNum)
+
+		ScriptDir = os.path.dirname(os.path.abspath(sys.argv[0]))
+		MERGE_script = ScriptDir + "/src/mergebam.py"
+		if os.path.isfile(MERGE_script):
+			pass
+		else:
+			sys.stderr.write("%s does not exist, the software package might not been downloaded perfectly!" % MERGE_script)
 			sys.exit(-1)
+		if Basic_config != None and os.path.isfile(Basic_config):
+			pass
+		else:
+			config_dir = OutputDir + "/config"
+			check_info(config_dir, "dir")
+			Basic_config = config_dir + "/Basic.config"
+			Create_config_script = ScriptDir + "/src/create_config.py"
+			subprocess.call(["python", Create_config_script, "Basic", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir])
 
-		javapath = G.Java()
-		HapCut_path = G.HapCut()
-		fgbio_path = G.Fgbio()
-		HapCut_par = G.HapCut_par()
+		bamDict = dict()
+		rMarkBamFileList = open(MarkBamFileList, 'r')
+		for eachBamfile in rMarkBamFileList:
+			eachBamfile = eachBamfile.strip()
+			(SampleId, LibraryId, bamfile) = re.split("\t", eachBamfile)
+			check_info(bamfile, 'file')
+			if SampleId in bamDict:
+				bamDict[SampleId] = bamDict[SampleId] + "\n" + bamfile
+			else:
+				bamDict[SampleId] = bamfile
+		rMarkBamFileList.close()
 
-		Path_extractHAIRS = HapCut_path + '/build/extractHAIRS'
-		Path_HAPCUT2 = HapCut_path + '/build/HAPCUT2'
-		PathSNAPSHOT = fgbio_path + '/fgbio/target/fgbio-0.2.0-SNAPSHOT.jar'
+		tmpshelldir = OutputDir + "/tmp"
+		check_info(tmpshelldir, "dir")
+		MERGEshell = tmpshelldir + "/MERGE_" + ''.join(random.sample(string.ascii_letters + string.digits, 8)) + ".sh"
+		wMERGEshell = open(MERGEshell, 'w')
+		Result_List_Dir = OutputDir + "/Result_list"
+		check_info(Result_List_Dir, 'dir')
+		FinalBamFileList = Result_List_Dir + "/Reseq_Varcall_Phasing_input.txt"
+		Basic_MERGE_Result_List = Result_List_Dir + "/Basic_MERGE_result.txt"
+		wFinalBamFileList = open(FinalBamFileList, 'w')
+		wBasic_MERGE_Result_List = open(Basic_MERGE_Result_List, 'w')
 
-		PhaseVcf = UnphaseVcf
-		PhaseVcf = PhaseVcf.replace("vcf", "phased.vcf")
-		fragment_file = PhaseVcf
-		fragment_file = fragment_file.replace("phased.vcf", "phased.fragment")
-		haplotype_output_file = PhaseVcf
-		haplotype_output_file = haplotype_output_file.replace("phased.vcf", "haplotype.txt")
+		for samplekey in bamDict.keys():
+			sample_bam_dir = OutputDir + "/" + samplekey
+			check_info(sample_bam_dir, "dir")
+			sample_bam = OutputDir + "/" + samplekey + "/bam.txt"
+			wbam = open(sample_bam, 'w')
+			allbam = bamDict[samplekey] + "\n"
+			wbam.write(allbam)
+			wbam.close()
 
-		tmpdir = os.path.dirname(UnphaseVcf)
-		tmpshell = os.path.join(tmpdir, "phase.sh")
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join([Path_extractHAIRS, "--bam", Markedbam, "--VCF", UnphaseVcf, "--out", fragment_file, "\n"])
-		wtmpshell.write(shell_line)
-		shell_line = " ".join([Path_HAPCUT2, "--fragments", fragment_file, "--vcf", UnphaseVcf, "--output", haplotype_output_file, "\n"])
-		wtmpshell.write(shell_line)
-		shell_line = " ".join([javapath, "-jar", PathSNAPSHOT, "HapCutToVcf -v", UnphaseVcf, "-i", haplotype_output_file, "-o", PhaseVcf, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
+			shelldir = OutputDir + "/" + samplekey + "/shell"
+			check_info(shelldir, "dir")
+			BAMshell = shelldir + "/merge_bam.sh"
+			runBAMshell = BAMshell + "\n"
+			wMERGEshell.write(runBAMshell)
+			wBAMshell = open(BAMshell, 'w')
+			mergedbam = sample_bam_dir + "/" + samplekey + ".sorted.merged.marked.bam"
+			shell_line = " ".join(["python", MERGE_script, "-i", sample_bam, "-o", mergedbam, "-c", Basic_config, "\n"])
+			wBAMshell.write(shell_line)
+			wBAMshell.close()
 
-		subprocess.call(["sh", tmpshell])
+			baminfo = "\t".join([samplekey, mergedbam]) + "\n"
+			wFinalBamFileList.write(baminfo)
+			Result_log = "\t".join([SampleId, "final alignment result:", mergedbam + "\n"])
+			wBasic_MERGE_Result_List.write(Result_log)
+		wMERGEshell.close()
+		wFinalBamFileList.close()
+		wBasic_MERGE_Result_List.close()
 
-		sys.stderr.write("[ %s ] phased vcf file has been writeen to %s\n\n" % (time.asctime(), PhaseVcf))
+		run_parallel(MERGEshell, ParalleleNum)
+		sys.stderr.write("[ %s ] files generated by 'Basic MERGE' have been listed in \n\n\t %s \n\n" % (time.asctime(), Basic_MERGE_Result_List))
+		sys.stderr.write("[ %s ] finally merged bam files have been listed in \n\t %s \n\n\tAnd it's the input file in the 'Reseq Varcall' and 'Reseq Phasing' step\n\n" % (time.asctime(), FinalBamFileList))
 
+####################################################### MERGE ###############################################################
+
+####################################################### Varcall #############################################################
+	UnphasedVcfList = None
+	runVAR = 0
+	if sys.argv[1] == "Reseqall":
+		runVAR = 1
+	elif sys.argv[1] == "Reseq" and sys.argv[2] == "Varcall":
+		runVAR = 2
+	if runVAR > 0:
+
+		all_command = " ".join(sys.argv)
+		sys.stderr.write("Command:\t%s\n\n" % all_command)
+
+		opts, args = getopt.gnu_getopt(sys.argv[runVAR:], 'i:o:L:p:c:s:d:', ['input', 'outputdir', 'chrlist', 'parallel', 'config', 'softwarepath', 'datasetpath'])
+		for o, a in opts:
+			if o == '-i' or o == '--input':
+				FinalBamFileList = a
+			if o == '-o' or o == '--outputdir':
+				OutputDir = str(a)
+				if OutputDir.endswith("/"):
+					OutputDir = OutputDir[0:(len(OutputDir)-1)]
+			if o == '-L' or o == '--chrlist':
+				Chrlist = a
+			if o == '-p' or o == '--parallel':
+				ParalleleNum = a
+			if o == '-c' or o == '--config':
+				Reseq_config = a
+			if o == '-s' or o == '--softwarepath':
+				SoftwarePathDir = a
+			if o == '-d' or o == '--datasetpath':
+				DatasetPahtDir = a
+
+		check_info(FinalBamFileList, "file")
+		check_info(OutputDir, "dir")
+		check_info(ParalleleNum, "num")
+
+		if int(ParalleleNum) > 1:
+			sys.stderr.write("The maximum number of %s CPUs would be invoked at the same time\n" % ParalleleNum)
+
+		ScriptDir = os.path.dirname(os.path.abspath(sys.argv[0]))
+		VAR_script = ScriptDir + "/src/SnpInDel_call.py"
+		if os.path.isfile(VAR_script):
+			pass
+		else:
+			sys.stderr.write("%s does not exist, the software package might not been downloaded perfectly!" % VAR_script)
+			sys.exit(-1)
+		if Reseq_config != None and os.path.isfile(Reseq_config):
+			pass
+		else:
+			config_dir = OutputDir + "/config"
+			check_info(config_dir, "dir")
+			Reseq_config = config_dir + "/Reseq.config"
+			Create_config_script = ScriptDir + "/src/create_config.py"
+			subprocess.call(["python", Create_config_script, "Reseq", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir])
+
+		Result_List_Dir = OutputDir + "/Result_list"
+		check_info(Result_List_Dir, 'dir')
+		Reseq_Varcall_Result_List = Result_List_Dir + "/Reseq_Varcall_result.txt"
+		UnphasedVcfList = Result_List_Dir + "/Reseq_Phasing_input.txt"
+		wReseq_Varcall_Result_List = open(Reseq_Varcall_Result_List, 'w')
+		wUnphasedVcfList = open(UnphasedVcfList, 'w')
+		rFinalBamFileList = open(FinalBamFileList, 'r')
+		tmpshelldir = OutputDir + "/tmp"
+		check_info(tmpshelldir, "dir")
+		VARshell = tmpshelldir + "/VAR_" + ''.join(random.sample(string.ascii_letters + string.digits, 8)) + ".sh"
+		wVARshell = open(VARshell, 'w')
+		for eachBamfile in rFinalBamFileList:
+			eachBamfile = eachBamfile.strip()
+			(SampleId, bamfile) = re.split("\t", eachBamfile)
+			check_info(bamfile, 'file')
+
+			SampleDir = OutputDir + "/" + SampleId
+			check_info(SampleDir, "dir")
+			shelldir = SampleDir + "/shell"
+			check_info(shelldir, "dir")
+
+			Eachshell = shelldir + "/variant_call.sh"
+			runEachshell = Eachshell + "\n"
+			wVARshell.write(runEachshell)
+
+			wEachshell = open(Eachshell, 'w')
+			shell_line = " ".join(["python", VAR_script, "-i", bamfile, "-o", SampleDir, "-c", Reseq_config, "-L", Chrlist, "\n"])
+			wEachshell.write(shell_line)
+			wEachshell.close()
+			unphased_vcf = SampleDir + "/vcf/all.vcf\n"
+			wUnphasedVcfList.write(unphased_vcf)
+
+			Result_log = "\t".join([SampleId, "unphased vcf file:", unphased_vcf])
+			wReseq_Varcall_Result_List.write(Result_log)
+		rFinalBamFileList.close()
+		wVARshell.close()
+		wUnphasedVcfList.close()
+		wReseq_Varcall_Result_List.close()
+
+		run_parallel(VARshell, ParalleleNum)
+		sys.stderr.write("[ %s ] files generated by 'Reseq Varcall' have been listed in \n\n\t %s \n\n" % (time.asctime(), Reseq_Varcall_Result_List))
+		sys.stderr.write("[ %s ] Variation call results have been listed in \n\n\t %s \n\n\tAnd it's the input file in the 'Reseq Phasing' step\n\n" % (time.asctime(), UnphasedVcfList))
+####################################################### Varcall #############################################################
+
+####################################################### Phasing #############################################################
+	runPHASE = 0
+	if sys.argv[1] == "Reseqall":
+		runPHASE = 1
+	elif sys.argv[1] == "Reseq" and sys.argv[2] == "Phasing":
+		runPHASE = 2
+	if runPHASE > 0:
+		opts, args = getopt.gnu_getopt(sys.argv[runPHASE:], 'i:o:p:v:c:s:d:', ['input', 'outputdir', 'vcf', 'parallel', 'config', 'softwarepath', 'datasetpath'])
+		for o, a in opts:
+			if runPHASE == 2:
+				if o == '-v' or o == '--vcf':
+					UnphasedVcfList = a
+			if o == 'i' or o == '--input':
+				FinalBamFileList = a
+			if o == '-o' or o == '--outputdir':
+				OutputDir = str(a)
+				if OutputDir.endswith("/"):
+					OutputDir = OutputDir[0:(len(OutputDir)-1)]
+			if o == '-p' or o == '--parallel':
+				ParalleleNum = a
+			if o == '-c' or o == '--config':
+				Basic_config = a
+			if o == '-s' or o == '--softwarepath':
+				SoftwarePathDir = a
+			if o == '-d' or o == '--datasetpath':
+				DatasetPahtDir = a
+
+		check_info(FinalBamFileList, "file")
+		check_info(UnphasedVcfList, "file")
+		check_info(OutputDir, "dir")
+		check_info(ParalleleNum, "num")
+
+		if int(ParalleleNum) > 1:
+			sys.stderr.write("The maximum number of %s CPUs would be invoked at the same time\n" % ParalleleNum)
+
+		ScriptDir = os.path.dirname(os.path.abspath(sys.argv[0]))
+		PHA_script = ScriptDir + "/src/phasing.py"
+		if os.path.isfile(PHA_script):
+			pass
+		else:
+			sys.stderr.write("%s does not exist, the software package might not been downloaded perfectly!" % PHA_script)
+			sys.exit(-1)
+		if Reseq_config != None and os.path.isfile(Reseq_config):
+			pass
+		else:
+			config_dir = OutputDir + "/config"
+			check_info(config_dir, "dir")
+			Reseq_config = config_dir + "/Reseq.config"
+			Create_config_script = ScriptDir + "/src/create_config.py"
+			subprocess.call(["python", Create_config_script, "Reseq", "-o", config_dir, "-s", SoftwarePathDir, "-d", DatasetPahtDir])
+
+		rFinalBamFileList = open(FinalBamFileList, 'r')
+		BamDict = dict()
+		rUnphasedVcfList = open(UnphasedVcfList, 'r')
+		VcfDict = dict()
+		for eachBamfile in rFinalBamFileList:
+			eachBamfile = eachBamfile.strip()
+			(SampleId, bamfile) = re.split("\t", eachBamfile)
+			check_info(bamfile, 'file')
+			BamDict[SampleId] = bamfile
+		for eachVcffile in rUnphasedVcfList:
+			eachVcffile = eachVcffile.strip()
+			(SampleId, vcffile) = re.split("\t", eachVcffile)
+			check_info(vcffile, 'file')
+			VcfDict[SampleId] = vcffile
+		rFinalBamFileList.close()
+		rUnphasedVcfList.close()
+
+		tmpshelldir = OutputDir + "/tmp"
+		check_info(tmpshelldir, "dir")
+		PHASEshell = tmpshelldir + "/PHASE_" + ''.join(random.sample(string.ascii_letters + string.digits, 8)) + ".sh"
+		wPHASEshell = open(PHASEshell, 'w')
+		Result_List_Dir = OutputDir + "/Result_list"
+		check_info(Result_List_Dir, 'dir')
+		phaseVcfList = Result_List_Dir + "/Reseq_Phasing_result.txt"
+		wphaseVcfList = open(phaseVcfList, 'w')
+		for SampleId in BamDict.keys():
+			if SampleId not in VcfDict:
+				sys.stderr.write("vcf file not found: %s !\n" % SampleId)
+			else:
+				bamfile = BamDict[SampleId]
+				unphasevcffile = VcfDict[SampleId]
+				sampledir = OutputDir + "/" + SampleId + "/" + "phase"
+				check_info(sampledir, "dir")
+				shelldir = sampledir + "/shell"
+				check_info(shelldir, "dir")
+				Eachshell = shelldir + "/phase.sh"
+				runEachshell = Eachshell + "\n"
+				wPHASEshell.write(runEachshell)
+
+				wEachshell = open(Eachshell, 'w')
+				shell_line = " ".join(["python", PHA_script, "-i", bamfile, "-v", unphasevcffile, "-o", sampledir, "-c", Reseq_config, "\n"])
+				wEachshell.write(wEachshell)
+				wEachshell.close()
+
+				phasevcffile = None
+				vcfname = os.path.basename(unphasevcffile)
+				if vcfname.endswith('.gz'):
+					b = str(vcfname)
+					vcfname = b[0:(len(b)-3)]
+				if vcfname.endswith(".vcf"):
+					b = str(vcfname)
+					phasevcffile = sampledir + "/" + b[0:(len(b)-4)] + ".phased.vcf"
+				else:
+					phasevcffile = sampledir + "/" + vcfname + ".phased.vcf"
+				phasevcffile = SampleId + "\tphased vcf file:\t" + phasevcffile + "\n"
+				wphaseVcfList.write(phasevcffile)
+		wPHASEshell.close()
+		wphaseVcfList.close()
+
+		run_parallel(PHASEshell, ParalleleNum)
+		sys.stderr.write("[ %s ] files generated by 'Reseq Phasing' have been listed in \n\n\t %s \n\n" % (time.asctime(), phaseVcfList))
+####################################################### Phasing #############################################################
