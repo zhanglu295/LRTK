@@ -579,6 +579,21 @@ if __name__ == '__main__':
 		for fqinfo in rCleanFqList:
 			fqinfo = fqinfo.strip()
 			(SampleId, LibraryId, FqPath1, FqPath2) = re.split("\t", fqinfo)
+			if os.path.isfile(FqPath1):
+				pass
+			else:
+				fqname1 = os.path.basename(FqPath1)
+				fqname2 = os.path.basename(FqPath2)
+				fqdir1 = os.path.dirname(FqPath1)
+				fqdir2 = os.path.dirname(FqPath2)
+				newFqPath1 = fqdir1 + "/tmp/" + fqname1
+				newFqPath2 = fqdir2 + "/tmp/" + fqname2
+				if os.path.isfile(newFqPath1) and os.path.isfile(newFqPath2):
+					subprocess.call(["mv", newFqPath1, FqPath1])
+					subprocess.call(["mv", newFqPath2, FqPath2])
+				else:
+					sys.stderr.write("[ %s ] ERROR: %s and %s do not exist!\n\n" % (time.asctime(), FqPath1, FqPath2))
+					sys.exit(-1)
 			check_info(FqPath1, 'file')
 			check_info(FqPath2, 'file')
 			FqPathBasename = os.path.basename(FqPath1)
