@@ -3,6 +3,7 @@ import getopt
 import time
 import subprocess
 import re
+import random, string
 
 class baseinfo:
 	def __init__(self):
@@ -58,6 +59,27 @@ class baseinfo:
 		return abs_path
 
 class modify_barcode:
+	def find_samtools_version(self, samtools_path, outdir = './'):
+		randomstring = ''.join(random.sample(string.ascii_letters + string.digits, 8))
+		print(randomstring)
+		tmpshell = outdir + "/" + randomstring + ".sh"
+		tmplog = outdir + "/" + randomstring + ".log"
+		wtmpshell = open(tmpshell, 'w')
+		shell_line = " ".join([samtools_path, "2>", tmplog, "\n"])
+		wtmpshell.write(shell_line)
+		wtmpshell.close()
+		subprocess.call(["sh", tmpshell])
+
+		sv = 0
+		rlog = open(tmplog, 'r')
+		for log in rlog:
+			if re.search("Version", log):
+				loginfo = re.split('\s', log)
+				sv = (re.split('\.', loginfo[1]))[0]
+		rlog.close()
+		subprocess.call(["rm", tmpshell, tmplog])
+		return(int(sv))
+
 	def fill_barcode(self, original_sam, samtools_path, outdir = './'):
 		original_name = os.path.basename(original_sam)
 
@@ -66,7 +88,7 @@ class modify_barcode:
 		new_bam = new_sam.replace('sam', 'bam')
 		sorted_bam = new_sam.replace('new.sam', 'sorted')
 
-		print(" ".join(["modified and sorted bam file:", sorted_bam + '.bam', "\n"]))
+		print(" ".join(["modified and sorted bam file:", sorted_bam, ".bam\n"]))
 		
 		o_original_sam = open(original_sam, 'r')
 		o_new_sam = open(new_sam, 'w')
@@ -116,12 +138,19 @@ class modify_barcode:
 		check_info(shelldir)
 		shell = shelldir + "/" + os.path.basename(sorted_bam) + ".sh"
 		oshell = open(shell, 'w')
-		shell_line = " ".join([samtools_path, "view -h -S -b", new_sam, ">", new_bam, "\n"])
-		oshell.write(shell_line)
-		shell_line = " ".join([samtools_path, "sort -m 1G", new_bam, sorted_bam, "\n"])
-		oshell.write(shell_line)
-#		shell_line = " ".join([samtools_path, "view -h", sorted_bam + '.bam > ', sorted_bam + '.sam\n'])
-#		oshell.write(shell_line)
+		sv = self.find_samtools_version(samtools_path, shelldir)
+		if sv == 0:
+			shell_line = " ".join([samtools_path, "view -h -S -b", new_sam, ">", new_bam, "\n"])
+			oshell.write(shell_line)
+			shell_line = " ".join([samtools_path, "sort -m 1G", new_bam, sorted_bam, "\n"])
+			oshell.write(shell_line)
+		else:
+			shell_line = " ".join([samtools_path, "view -h -S -b -o", new_bam, new_sam + "\n"])
+			oshell.write(shell_line)
+			shell_line = " ".join([samtools_path, "sort -m 2G -o", sorted_bam + ".sorted.bam -T", sorted_bam, new_bam, "\n"])
+			oshell.write(shell_line)
+			shell_line = " ".join(["mv", sorted_bam + ".sorted.bam", sorted_bam + ".bam\n"])
+			oshell.write(shell_line)
 		shell_line = " ".join(["#rm", original_sam, new_sam, new_bam, "\n"])
 		oshell.write(shell_line)
 		oshell.close()

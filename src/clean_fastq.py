@@ -309,6 +309,7 @@ class modify_barcode:
 		shelldir = os.path.dirname(sorted_bam) + "/shell"
 		check_info(shelldir)
 		shell = shelldir + "/" + os.path.basename(sorted_bam) + ".sh"
+		print(shell)
 		oshell = open(shell, 'w')
 		shell_line = " ".join([samtools_path, "view -h -S -b", new_sam, ">", new_bam, "\n"])
 		oshell.write(shell_line)
