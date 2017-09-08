@@ -86,55 +86,18 @@ class OUTERSOFT:
 		else:
 			shell_line = " ".join(["ln -s", bamfiles, mergedbam, "\n"])
 		wtmpshell.write(shell_line)
+		shell_line = " ".join([java_path, "-jar", picard_path, "BuildBamIndex", "I=" + mergedbam, "O=" + mergedbam + ".bai\n"])
+		wtmpshell.write(shell_line)
 		wtmpshell.close()
 		sys.stderr.write("[ %s ] merge bam files: %s \n\n" % (time.asctime(), bamfiles))
 		subprocess.call(["sh", tmpshell])
 		sys.stderr.write("[ %s ] bam files has been merged into one file: %s \n\n" % (time.asctime(), mergedbam))
 		return(mergedbam)
-		
-	def picard_markdup(self, oribam, markedbam, java_path, picard_path, picard_paramter):
-		metrics = markedbam.replace('bam', 'metrics.txt')
-
-		bai = oribam.replace('bam', 'bai')
-		isbai = 0
-		if os.path.exists(bai):
-			isbai = 1
-		else:
-			bai = oribam + '.bai'
-			if os.path.exists(bai):
-				isbai = 1
-		if isbai:
-			pass
-		else:
-			sys.stderr.write("bai not found, will produce bai file for bam automatically: %s\n" % bai)
-			tmpshell = bai + '.sh'
-			wtmpshell = open(tmpshell, 'w')
-			shell_line = " ".join([java_path, '-jar', picard_path, 'BuildBamIndex', "I=" + oribam, "O=" + bai, "\n"])
-			wtmpshell.write(shell_line)
-			print(shell_line)
-			wtmpshell.close()
-			subprocess.call(["sh", tmpshell])
-			subprocess.call(["rm", tmpshell])
-
-		sys.stderr.write("[ %s ] marking duplication ... \n" % (time.asctime()))
-		shelldir = os.path.dirname(markedbam) + "/shell"
-		if os.path.isdir(shelldir):
-			pass
-		else:
-			os.mkdir(shelldir)
-		tmpshell = os.path.join(shelldir, 'mark_duplicate.sh')
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join([java_path, '-jar', picard_path, 'MarkDuplicates', "I=" + oribam, "O=" + markedbam, "M=" + metrics, picard_paramter, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
-		subprocess.call(["sh", tmpshell])
-		sys.stderr.write("[ %s ] marked bam file has been written to %s\n" % (time.asctime(), markedbam))
-		return(markedbam)
 
 def usage():
 	merge_mark_usage = \
 	'''
-	merge multiple files belong to the same library of each individual, and mark PCR duplication of the merged bam file
+	merge multiple files belong to the same individual
 	Version: 1.0.0
 	Dependents: Python (>=3.0), BWA, SAMtools, Picard (>=2.0)
 	Last Updated Date: 2017-06-01
@@ -199,29 +162,5 @@ if __name__ == '__main__':
 
 	bamline = open(inputbamlist, 'r').readlines()
 	MergedBam = None
-	if len(bamline) > 1:
-		bamdir = os.path.dirname(outputbam)
-		MergedBam = os.path.join(bamdir, "multiple.merged.bam")
-		MergedBam = O.picard_merge(inputbamlist, MergedBam, javapath, picardpath, picard_merge_parameter)
-	else:
-		MergedBam = bamline[0].strip()
-		sys.stderr.write("[ %s ] there is only one bam file in the list: %s\n\n" % (time.asctime(), inputbamlist))
-
-	Markedbam = O.picard_markdup(MergedBam, outputbam, javapath, picardpath, picard_mark_parameter)
-	if os.path.exists(Markedbam):
-		sys.stderr.write("[ %s ] duplication reads have been marked, and the output has been written to %s \n" % (time.asctime(), Markedbam))
-	else:
-		sys.stderr.write("\nERROR: %s has not been created, please check the warning info and try again\n\n" % Markedbam)
-		sys.exit(-1)
-	
-	tmpdir = os.path.dirname(Markedbam) + "/tmp"
-	if os.path.isdir(tmpdir):
-		pass
-	else:
-		os.mkdir(tmpdir)
-	mvshell = tmpdir + "/tmp.mv.3.sh"
-	wmvshell = open(mvshell, 'w')
-	shell_line = " ".join(["mv", MergedBam, MergedBam + ".bai", tmpdir, "\n"])
-	wmvshell.write(shell_line)
-	wmvshell.close()
-	subprocess.call(["sh", mvshell])
+	bamdir = os.path.dirname(outputbam)
+	MergedBam = O.picard_merge(inputbamlist, outputbam, javapath, picardpath, picard_merge_parameter)

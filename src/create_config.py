@@ -4,37 +4,34 @@ import time
 import re
 
 class create_config:
-	def QC_config(self, QC_config_file):
-		wQC_config_file = open(QC_config_file, 'w')
+	def Basic_config(self, Basic_config_file, script_dir, dataset_dir):
+		wBasic_config_file = open(Basic_config_file, 'w')
 		script_abs_path = os.path.abspath(sys.argv[0])
-		script_dir = os.path.dirname(os.path.dirname(script_abs_path)) + '/bin'
-		dataset_dir = os.path.dirname(os.path.dirname(script_abs_path)) + '/dataset'
 		bwa = script_dir + '/bwa'
 		samtools = script_dir + '/samtools'
 		picard = script_dir + '/picard.jar'
 		fastqc = script_dir + '/FastQC/fastqc'
 		java = 'java'
 		config_line = "\n".join(["###basic software", "bwa = " + bwa, "samtools = " + samtools, "picard = " + picard, "java = " + java, "", ""])
-		wQC_config_file.write(config_line)
+		wBasic_config_file.write(config_line)
 		barcode_fa = dataset_dir + '/barcode/barcode.fa'
 		config_line = "\n".join(["###barcode modification", "barcode_fa = " + barcode_fa, "barcode_aln_parameter = -l 5", "fastqc = " + fastqc, "", ""])
-		wQC_config_file.write(config_line)
+		wBasic_config_file.write(config_line)
 		genome_fa = dataset_dir + '/genome/genome.fa'
 		config_line = "\n".join(["###alignment", "ref = " + genome_fa, "fq_aln_parameter = -B 16", "fq_sampe_parameter = -a 1000", "", ""])
-		wQC_config_file.write(config_line)
+		wBasic_config_file.write(config_line)
 		config_line = "\n".join(["###merge multiple bam files belong to the same files", "picard_merge_parameter = ASSUME_SORTED=true USE_THREADING=true VALIDATION_STRINGENCY=LENIENT", "", ""])
-		wQC_config_file.write(config_line)
+		wBasic_config_file.write(config_line)
 		config_line = "\n".join(["###mark duplication", "picard_mark_parameter = BARCODE_TAG=BX REMOVE_DUPLICATES=false ASSUME_SORTED=true VALIDATION_STRINGENCY=LENIENT CREATE_INDEX=true", "", ""])
-		wQC_config_file.write(config_line)
+		wBasic_config_file.write(config_line)
 		config_line = "\n".join(["###statistics", "barcode_index = -k12", "genomesize = 2861343787", "", ""])
-		wQC_config_file.write(config_line)
-		wQC_config_file.close()
+		wBasic_config_file.write(config_line)
+		wBasic_config_file.close()
 
-	def Reseq_config(self, Reseq_config_file):
+	def Reseq_config(self, Reseq_config_file, script_dir, dataset_dir):
 		wReseq_config_file = open(Reseq_config_file, 'w')
-		script_abs_path = os.path.abspath(sys.argv[0])
-		script_dir = os.path.dirname(os.path.dirname(script_abs_path)) + '/bin'
-		dataset_dir = os.path.dirname(os.path.dirname(script_abs_path)) + '/dataset'
+		script_dir = str(script_dir)
+		dataset_dir = str(dataset_dir)
 		genome_fa = dataset_dir + '/genome/genome.fa'
 		gatk = script_dir + '/gatk-package-4.beta.1-local.jar'
 		dbsnp = dataset_dir + '/dbsnp137.vcf'
@@ -66,11 +63,9 @@ class create_config:
 		wchrlistfile.close()
 		rgenomedictfile.close()
 
-	def Denovo_config(self, Denovo_config_file):
+	def Denovo_config(self, Denovo_config_file, script_dir, dataset_dir):
 		wDenovo_config_file = open(Denovo_config_file, 'w')
 		script_abs_path = os.path.abspath(sys.argv[0])
-		script_dir = os.path.dirname(os.path.dirname(script_abs_path)) + '/bin'
-		dataset_dir = os.path.dirname(os.path.dirname(script_abs_path)) + '/dataset'
 
 		config_line = "\n".join(["###denovo assemble", "", ""])
 		wDenovo_config_file.write(config_line)
@@ -89,13 +84,15 @@ def usage():
 	Usage: python create_config.py <command> [options]
 
 	Command:
-		QC          create configuration file for quality control
+		Basic       create configuration file for basic processing
 		Reseq       create configuration file for resequencing
 		Denovo      create configuration file for de novo assembly
 		all         create all configuration files
 
 	Options:
 		-o --outputdir, the path of output directory
+		-s --softwarepath, the path of directory where all software were installed
+		-d --datasetpath, dataset directory
 		-h --help, help info
 
 	'''
@@ -105,37 +102,40 @@ if __name__ == '__main__':
 	if len(sys.argv) < 4:
 		usage()
 		sys.exit(-1)
-	elif len(sys.argv) == 4:
+	else:
 		command = sys.argv[1]
 		outputdir = None
+		SoftwarePathDir = None
+		DatasetPathDir = None
 
-		commandlist = ["QC", "Reseq", "Denovo", "all"]
+		commandlist = ["Basic", "Reseq", "Denovo", "all"]
 		if command not in commandlist:
 			sys.stderr.write(" %s is not supported in command!\n\n" % command)
 			usage()
 			sys.exit(-1)
 
-		opts, args = getopt.gnu_getopt(sys.argv[2:], 'o:h:', ['outputdir', 'help'])
+		opts, args = getopt.gnu_getopt(sys.argv[2:], 'o:s:d:h:', ['outputdir', 'softwarepath', 'datasetpath', 'help'])
 		for o, a in opts:
 			if o == '-o' or o == '--outputdir':
-				outputdir = a
+				outputdir = str(a)
+			if o == '-s' or o == '--softwarepath':
+				SoftwarePathDir = str(a)
+			if o == '-d' or o == '--datasetpath':
+				DatasetPathDir = str(a)
 			if o == '-h' or o == '--help':
 				usage()
 				sys.exit(-1)
 
 		C = create_config()
-		if command == "QC" or command == "all":
-			config_file = os.path.join(outputdir, "QC.config")
-			C.QC_config(config_file)
+		if command == "Basic" or command == "all":
+			config_file = os.path.join(outputdir, "Basic.config")
+			C.Basic_config(config_file, SoftwarePathDir, DatasetPathDir)
 			sys.stderr.write("[ %s ] configuration file for quality control has been created: %s \n" % (time.asctime(), config_file))
 		if command == "Reseq" or command == "all":
 			config_file = os.path.join(outputdir, "Reseq.config")
-			C.Reseq_config(config_file)
+			C.Reseq_config(config_file, SoftwarePathDir, DatasetPathDir)
 			sys.stderr.write("[ %s ] configuration file for resequencing has been created: %s \n" % (time.asctime(), config_file))
 		if command == "Denovo" or command == "all":
 			config_file = os.path.join(outputdir, "Denovo.config")
-			C.Denovo_config(config_file)
+			C.Denovo_config(config_file, SoftwarePathDir, DatasetPathDir)
 			sys.stderr.write("[ %s ] configuration file for de novo assembly has been created: %s \n" % (time.asctime(), config_file))
-	else:
-		usage()
-		sys.exit(-1)

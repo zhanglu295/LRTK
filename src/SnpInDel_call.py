@@ -34,8 +34,14 @@ class baseinfo:
 				ABS_PATH = " "
 			return ABS_PATH
 		else:
-			sys.stderr.write("ERROR - %s - %s is empty, please check the config file you inputted!\n" % (time.asctime(), name_variable))
-			sys.exit(-1)
+			sys.stderr.write("\n\nERROR - %s - %s is empty, please check the config file you inputted!\n\n" % (time.asctime(), name_variable))
+			time.sleep(5)
+			if name_variable == "dbsnp":
+				sys.stderr.write("\ndbsnp is not essential, the pipeline will go on\n")
+			else:
+				sys.exit(-1)
+			return 0
+#			sys.exit(-1)
 
 	def Ref(self):
 		abs_path = self.get_path('ref')
@@ -165,9 +171,15 @@ if __name__ == '__main__':
 		chrgvcf = os.path.join(bychrvcfdir, ch + ".gvcf")
 		chrvcf = os.path.join(bychrvcfdir, ch + ".vcf")
 		wchrshell = open(chrshell, 'w')
-		shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "--dbsnp", dbsnp, "-L", ch, "-O", chrgvcf, "\n"])
+		if os.path.isfile(dbsnp):
+			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "--dbsnp", dbsnp, "-L", ch, "-O", chrgvcf, "\n"])
+		else:
+			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "-L", ch, "-O", chrgvcf, "\n"])
 		wchrshell.write(shell_line)
-		shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "GenotypeGVCFs --variant", chrgvcf, "-O", chrvcf, "--dbsnp", dbsnp, GenotypeGVCFs_par, "-L", ch, "\n"])
+		if os.path.isfile(dbsnp):
+			shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "GenotypeGVCFs --variant", chrgvcf, "-O", chrvcf, "--dbsnp", dbsnp, GenotypeGVCFs_par, "-L", ch, "\n"])
+		else:
+			shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "GenotypeGVCFs --variant", chrgvcf, "-O", chrvcf, GenotypeGVCFs_par, "-L", ch, "\n"])
 		ChrGvcflist.append(chrvcf)
 		wchrshell.write(shell_line)
 		wchrshell.close()
@@ -197,6 +209,7 @@ if __name__ == '__main__':
 
 		finishNum = finishNum + 1
 		if pn == ParallelNum:
+			shell_line = shell_line + "wait\necho Done\n"
 			wtmpshell.write(shell_line)
 			wtmpshell.close()
 			subprocess.call(["sh", tmpshell])
@@ -207,6 +220,7 @@ if __name__ == '__main__':
 	if pn > 0:
 		tmpshell = os.path.join(shelldir, "tmp." + str(ts) + ".sh")
 		wtmpshell = open(tmpshell, 'w')
+		shell_line = shell_line + "wait\necho Done\n"
 		wtmpshell.write(shell_line)
 		wtmpshell.close()
 		subprocess.call(["sh", tmpshell])

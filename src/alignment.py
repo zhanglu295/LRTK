@@ -112,7 +112,9 @@ class modify_barcode:
 		o_original_sam.close()
 		o_new_sam.close()
 
-		shell = sorted_bam + ".sh"
+		shelldir = os.path.dirname(sorted_bam) + "/shell"
+		check_info(shelldir)
+		shell = shelldir + "/" + os.path.basename(sorted_bam) + ".sh"
 		oshell = open(shell, 'w')
 		shell_line = " ".join([samtools_path, "view -h -S -b", new_sam, ">", new_bam, "\n"])
 		oshell.write(shell_line)
@@ -127,6 +129,11 @@ class modify_barcode:
 		subprocess.call(["sh", shell])
 		return(sorted_bam + '.bam', sorted_bam + '.sam')
 
+def check_info(result):
+	if os.path.isdir(result):
+		pass
+	else:
+		os.makedirs(result)
 
 class OUTERSOFT:
 	def bwa_fq(self, fq1, fq2, outprefix, bwa_path, bwa_aln_parameter, bwa_sam_parameter, RGinfo):
@@ -136,7 +143,9 @@ class OUTERSOFT:
 		
 		sys.stderr.write("[ %s ] fq alignment starts\n" % (time.asctime()))
 		outdir = os.path.dirname(fq1)
-		shell = os.path.join(outdir, "fq.aln.sh")
+		shelldir = os.path.join(outdir, "shell")
+		check_info(shelldir)
+		shell = os.path.join(shelldir, "fq.aln.sh")
 		oshell = open(shell, 'w')
 		shell_line = " ".join([bwa_path, 'aln', ref_path, fq1, bwa_aln_parameter, '-f', sai1, '&\n'])
 		oshell.write(shell_line)
@@ -243,3 +252,19 @@ if __name__ == '__main__':
 	sys.stderr.write("[ %s ] modify barcode info of original sam file %s\n" % (time.asctime(), original_sam))
 	(Sortedbam, Sortedsam) = M.fill_barcode(original_sam, samtools, samdir)
 	sys.stderr.write("[ %s ] barcode info has been modified, new bam file has been written to %s\n\n" % (time.asctime(), Sortedbam))
+
+	tmpdir = samdir + "/tmp"
+	if os.path.isdir(tmpdir):
+		pass
+	else:
+		os.mkdir(tmpdir)
+	mvshell = tmpdir + "/tmp.mv.2.sh"
+	wmvshell = open(mvshell, 'w')
+	shell_line = " ".join(["mv", fq1, fq2, tmpdir, "\n"])
+	wmvshell.write(shell_line)
+	shell_line = " ".join(["mv", original_sam, tmpdir, "\n"])
+	wmvshell.write(shell_line)
+	shell_line = " ".join(["mv", inputfq_prefix + ".new.sam", inputfq_prefix + ".new.bam", tmpdir, "\n"])
+	wmvshell.write(shell_line)
+	wmvshell.close()
+	subprocess.call(["sh", mvshell])
