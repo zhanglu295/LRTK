@@ -5,6 +5,7 @@ import subprocess
 import re
 from collections import defaultdict
 import random
+import string
 
 class baseinfo:
 	def __init__(self):
@@ -52,10 +53,10 @@ class baseinfo:
 		return abs_path
 
 class CFCR:
-	def find_samtools_version(self, samtools_path):
+	def find_samtools_version(self, samtools_path, tmpdir):
 		randomstring = ''.join(random.sample(string.ascii_letters + string.digits, 8))
-		tmpshell = "~/" + randomstring + ".sh"
-		tmplog = "~/" + randomstring + ".log"
+		tmpshell = tmpdir + "/" + randomstring + ".sh"
+		tmplog = tmpdir + "/" + randomstring + ".log"
 		wtmpshell = open(tmpshell, 'w')
 		shell_line = " ".join([samtools_path, "2>", tmplog, "\n"])
 		wtmpshell.write(shell_line)
@@ -69,8 +70,7 @@ class CFCR:
 				loginfo = re.split('\s', log)
 				sv = (re.split('\.', loginfo[1]))[0]
 		rlog.close()
-		subprocess.call(["rm -rf", tmpshell, tmplog])
-		print(int(sv))
+		subprocess.call(["rm", tmpshell, tmplog])
 		return(int(sv))
 
 	def split_and_sort_sam(self, sorted_bam, samtools_path, barcode_index, outdir = './'):
@@ -97,7 +97,7 @@ class CFCR:
 			else:
 				sys.stderr.write("%s has not been sorted, and would be sorted before calculating CF/CR!\n" % sorted_bam)
 
-				sv = self.find_samtools_version(samtools_path)
+				sv = self.find_samtools_version(samtools_path, splitdir)
 				if sv == 0:
 					shell_line = " ".join([samtools_path, "sort -m 2G", sorted_bam, sorted_bam + ".sorted\n"])
 				else:
@@ -183,26 +183,65 @@ class CFCR:
 		saminfo = saminfo + "\n"
 		return(saminfo)
 
-	def calculate(self, sorted_by_barcode_sam_list, target_size, outdir = './'):
+	def calculate(self, sorted_by_barcode_sam_list, target_size, outdir, sorted_bam, samtools_path, molecule_length):
 		samfile_list = open(sorted_by_barcode_sam_list, 'r')
-		marked_molecule = os.path.join(outdir, "molecule.full.gz")
+		statistics_report_dir = os.path.join(outdir, "statistics")
+		if os.path.isdir(statistics_report_dir):
+			pass
+		else:
+			os.makedirs(statistics_report_dir)
+		marked_molecule = os.path.join(statistics_report_dir, "molecule.full.gz")
 		wmarked_molecule = gzip.open(marked_molecule, 'wb')
-		broken_molecule = os.path.join(outdir, "molecule.broken.txt")
+		broken_molecule = os.path.join(statistics_report_dir, "molecule.broken.txt")
 		wbroken_molecule = open(broken_molecule, 'w')
 
 		mol_id = 1
 		all_CF = 0
 		all_CR = 0
 		allbarcode = dict()
-		readid_dict = defaultdict(int)
+		readid_dict = defaultdict(dict)
 		molecule = defaultdict(list)
 		molecule2 = defaultdict(list)
 		molecule3 = defaultdict(int)
 		molecule4 = defaultdict(list)
+
+		molecule_length_distribution = dict()
+		barcode_molecule_amount = defaultdict(dict)
+		molecule_really_covered = defaultdict(list)
+		molecule_coverage_distribution = defaultdict(int)
+		molecule_coverage_distribution_sum = 0
+
+		barcode_molecule_amount_file = os.path.join(statistics_report_dir, "barcode_molecule_amount.txt")
+		wbarcode_molecule_amount_file = open(barcode_molecule_amount_file, "w")
+		wbarcode_molecule_amount_file.write("barcode\tamount_of_molecule\n")
+
+		molecule_really_covered_file = os.path.join(statistics_report_dir, "each_molecule_coverage.txt")
+		wmolecule_really_covered_file = open(molecule_really_covered_file, "w")
+		wmolecule_really_covered_file.write("molecule_id\tmolecule_length\tcovered\tcoverage\n")
+
+		molecule_coverage_distribution_file = os.path.join(statistics_report_dir, "molecule_coverage_distribution.txt")
+		wmolecule_coverage_distribution_file = open(molecule_coverage_distribution_file, "w")
+		wmolecule_coverage_distribution_file.write("coverage\tproportion(%)\n")
+
+		filter_molecule_bam_list = list()
 		for sam in samfile_list:
 			sam = sam.strip()
 			sys.stderr.write("[ %s ] processing: %s \n" %(time.asctime(), sam))
 			samfile = open(sam, 'r')
+
+			if molecule_length > 0:
+				molecule_pass = 0
+				filtered_samfile = (sam + ".filtered").replace("sam.filtered", "filtered.sam")
+				tmpshell = filtered_samfile + ".sh"
+				wtmpshell = open(tmpshell, 'w')
+				shell_line = " ".join([samtools_path, "view -H", sorted_bam, "| grep -v coordinate >", filtered_samfile, "\n"])
+				wtmpshell.write(shell_line)
+				wtmpshell.close()
+				subprocess.call(["sh", tmpshell])
+				subprocess.call(["rm", tmpshell])
+
+				wfiltered_samfile = open(filtered_samfile, 'a')
+
 			while True:
 				saminfo = samfile.readline().strip()
 				saminfolist = re.split("\t", saminfo)
@@ -212,7 +251,6 @@ class CFCR:
 				elif saminfolist[5] == "*":
 					pass
 				else:
-					### 以barcode 为单位进行处理
 					barcode_field = [s for s in saminfolist if "BX:Z:" in s]
 					if barcode_field != []:
 						bc = barcode_field[0].split(":")[2].split("-")[0]
@@ -220,15 +258,15 @@ class CFCR:
 						readlength = len(saminfolist[9])
 						end_pos = start_pos + readlength - 1
 						chrid = saminfolist[2]
-						if bc not in allbarcode:	## 如果barcode不存在，则有两种情况：1. allbarcode是空的   2. allbarcode不是空的，有且只有一个key
-							if len(allbarcode) == 0:	## allbarcode是空的，只赋值，不输出
+						if bc not in allbarcode:	
+							if len(allbarcode) == 0:
 								allbarcode[bc] = bc
 								readid_dict[saminfolist[0]] = 1
 								molecule[mol_id].append(start_pos)
 								molecule2[mol_id].append(end_pos)
 								molecule3[mol_id] = readlength
 								molecule4[mol_id].append(saminfo)
-							else:	## allbarcode不是空的，原来存的信息要输出出来，清空后，重新赋值
+							else:
 								se_num = 0
 								pe_num = 0
 								for readid_ in readid_dict.keys():
@@ -245,13 +283,52 @@ class CFCR:
 									all_CF += small_cf
 									qn = len(molecule[mol_id])
 									for eachinfo in molecule4[mol_id]:
-										outmoleculeinfo = "\t".join([chrid, str(minpos), str(maxpos), str(small_cf), str(qn), barcodeinfo[0], str(mol_id), eachinfo]) + "\n"
+										info_detail_list = re.split("\t", eachinfo)
+										if small_cf not in molecule_length_distribution:
+											molecule_length_distribution[small_cf] = 1
+										else:
+											molecule_length_distribution[small_cf] += 1
+										outmoleculeinfo = "\t".join([chrid, str(minpos), str(maxpos), str(small_cf), str(qn), barcodeinfo[0], str(mol_id), info_detail_list[0], info_detail_list[1], str(len(info_detail_list[9]))]) + "\n"
+
+										if barcodeinfo[0] not in barcode_molecule_amount:
+											barcode_molecule_amount[barcodeinfo[0]][mol_id] = 1
+										else:
+											if mol_id not in barcode_molecule_amount[barcodeinfo[0]]:
+												barcode_molecule_amount[barcodeinfo[0]][mol_id] = 1
+
+										if mol_id not in molecule_really_covered:
+											molecule_really_covered[mol_id].append(small_cf)
+											molecule_really_covered[mol_id].append(len(info_detail_list[9]))
+										else:
+											molecule_really_covered[mol_id][1] += len(info_detail_list[9])
+
+										if molecule_length > 0 and molecule_length < small_cf:
+											molecule_pass = 1
+											pass_filtered_info = eachinfo + "\n"
+											wfiltered_samfile.write(pass_filtered_info)
 										wmarked_molecule.write(outmoleculeinfo.encode())
 									mol_id += 1
 								else:
 									for readid_ in readid_dict.keys():
 										broken_info = "\t".join([str(readid_), str(readid_dict[readid_])]) + "\n"
 										wbroken_molecule.write(broken_info)
+
+								for barcode_molecule_barcode in barcode_molecule_amount.keys():
+									separate_num = len(barcode_molecule_amount[barcode_molecule_barcode].keys())
+									info = barcode_molecule_barcode + "\t" + str(separate_num) + "\n"
+									wbarcode_molecule_amount_file.write(info)
+
+								for mol_id_key in molecule_really_covered.keys():
+									small_cfcf_rate = 1.0 * molecule_really_covered[mol_id_key][1] / molecule_really_covered[mol_id_key][0]
+									info = str(mol_id_key) + "\t" + str(molecule_really_covered[mol_id_key][0]) + "\t" + str(molecule_really_covered[mol_id_key][1]) + "\t" + str(small_cfcf_rate) + "\n"
+									wmolecule_really_covered_file.write(info)
+
+									small_cfcf_rate_expand = int(100 * small_cfcf_rate)
+									molecule_coverage_distribution[small_cfcf_rate_expand] += 1
+									molecule_coverage_distribution_sum += 1
+
+								molecule_really_covered = defaultdict(list)
+								barcode_molecule_amount = defaultdict(dict)
 								allbarcode = dict()
 								readid_dict = defaultdict(int)
 								molecule = defaultdict(list)
@@ -289,7 +366,29 @@ class CFCR:
 									qn = len(molecule[mol_id])
 									barcodeinfo = sorted(allbarcode.keys())
 									for eachinfo in molecule4[mol_id]:
-										outmoleculeinfo = "\t".join([chrid, str(minpos), str(maxpos), str(small_cf), str(qn), barcodeinfo[0], str(mol_id), eachinfo]) + "\n"
+										info_detail_list = re.split("\t", eachinfo)
+										if small_cf not in molecule_length_distribution:
+											molecule_length_distribution[small_cf] = 1
+										else:
+											molecule_length_distribution[small_cf] += 1
+										outmoleculeinfo = "\t".join([chrid, str(minpos), str(maxpos), str(small_cf), str(qn), barcodeinfo[0], str(mol_id), info_detail_list[0], info_detail_list[1], str(len(info_detail_list[9]))]) + "\n"
+
+										if barcodeinfo[0] not in barcode_molecule_amount:
+											barcode_molecule_amount[barcodeinfo[0]][mol_id] = 1
+										else:
+											if mol_id not in barcode_molecule_amount[barcodeinfo[0]]:
+												barcode_molecule_amount[barcodeinfo[0]][mol_id] = 1
+
+										if mol_id not in molecule_really_covered:
+											molecule_really_covered[mol_id].append(small_cf)
+											molecule_really_covered[mol_id].append(len(info_detail_list[9]))
+										else:
+											molecule_really_covered[mol_id][1] += len(info_detail_list[9])
+
+										if molecule_length > 0 and molecule_length < small_cf:
+											molecule_pass = 1
+											pass_filtered_info = eachinfo + "\n"
+											wfiltered_samfile.write(pass_filtered_info)
 										wmarked_molecule.write(outmoleculeinfo.encode())
 									mol_id += 1
 								else:
@@ -297,6 +396,22 @@ class CFCR:
 										broken_info = "\t".join([str(readid_), str(readid_dict[readid_])]) + "\n"
 										wbroken_molecule.write(broken_info)
 
+								for barcode_molecule_barcode in barcode_molecule_amount.keys():
+									separate_num = len(barcode_molecule_amount[barcode_molecule_barcode].keys())
+									info = barcode_molecule_barcode + "\t" + str(separate_num) + "\n"
+									wbarcode_molecule_amount_file.write(info)
+								barcode_molecule_amount = defaultdict(dict)
+
+								for mol_id_key in molecule_really_covered.keys():
+									small_cfcf_rate = 1.0 * molecule_really_covered[mol_id_key][1] / molecule_really_covered[mol_id_key][0]
+									info = str(mol_id_key) + "\t" + str(molecule_really_covered[mol_id_key][0]) + "\t" + str(molecule_really_covered[mol_id_key][1]) + "\t" + str(small_cfcf_rate) + "\n"
+									wmolecule_really_covered_file.write(info)
+									small_cfcf_rate_expand = int(100 * small_cfcf_rate)
+									molecule_coverage_distribution[small_cfcf_rate_expand] += 1
+									molecule_coverage_distribution_sum += 1
+
+								molecule_really_covered = defaultdict(list)
+								barcode_molecule_amount = defaultdict(dict)
 								allbarcode = dict()
 								readid_dict = defaultdict(int)
 								molecule = defaultdict(list)
@@ -310,12 +425,59 @@ class CFCR:
 								molecule3[mol_id] = readlength
 								molecule4[mol_id].append(saminfo)
 
+			if molecule_length > 0 and molecule_pass > 0:
+				wfiltered_samfile.close()
+				tmpshell = filtered_samfile + ".sh"
+				tmpdir = os.path.dirname(tmpshell)
+				filtered_bamfile = filtered_samfile.replace("filtered.sam", "filtered.bam")
+				wtmpshell = open(tmpshell, 'w')
+				sv = self.find_samtools_version(samtools_path, tmpdir)
+				if sv == 0:
+					shell_line = " ".join([samtools_path, "view -h -S", filtered_samfile, "-b |", samtools_path, "sort -m 500M -", filtered_bamfile, "\nmv", filtered_bamfile + ".bam", filtered_bamfile, "\n"])
+				else:
+					shell_line = " ".join([samtools_path, "view -h -S", filtered_samfile, "-b |", samtools_path, "sort -m 500M -T", filtered_bamfile, "-o", filtered_bamfile,"-\n"])
+				wtmpshell.write(shell_line)
+				shell_line = " ".join([samtools_path, "index", filtered_bamfile, filtered_bamfile + ".bai\n"])
+				wtmpshell.write(shell_line)
+				wtmpshell.close()
+				subprocess.call(["sh", tmpshell])
+				subprocess.call(["rm", tmpshell])
+
+				filter_molecule_bam_list.append(filtered_bamfile)
+
 			samfile.close()
 		wmarked_molecule.close()
 		samfile_list.close()
 		wbroken_molecule.close()
 
-		cfcr_stat_file = os.path.join(outdir, "CFCR.stat")
+		filter_merge_bam = (sorted_bam + ".filtered").replace("bam.filtered", "filtered.bam")
+		if molecule_length > 0 and len(filter_molecule_bam_list) > 0:
+			shelldir = os.path.dirname(sorted_bam) + "/shell"
+			if os.path.isdir(shelldir):
+				pass
+			else:
+				os.makedirs(shelldir)
+			tmpshell = shelldir + "/merge_molecule_filtered_bam.sh"
+			wtmpshell = open(tmpshell, 'w')
+			sv = self.find_samtools_version(samtools_path, shelldir)
+			filtered_bam_name = " ".join(filter_molecule_bam_list)
+			if sv == 0:
+				if len(filter_molecule_bam_list) > 1:
+					shell_line = " ".join([samtools_path, "merge -f", filter_merge_bam, filtered_bam_name, "\n", samtools_path, "index", filter_merge_bam, filter_merge_bam + ".bai\n"])
+				else:
+					shell_line = " ".join(["ln", "-s", "-f", filter_molecule_bam_list[0], filter_merge_bam + "\n", "ln", "-s", "-f", filter_molecule_bam_list[0] + ".bai", filter_merge_bam + ".bai\n"])
+			else:
+				shell_line = " ".join([samtools_path, "merge -f", filter_merge_bam, filtered_bam_name])
+			wtmpshell.write(shell_line)
+			wtmpshell.close()
+			subprocess.call(["sh", tmpshell])
+		else:
+			subprocess.call(["ln", "-s", "-f", sorted_bam, filter_merge_bam])
+			old_bai = sorted_bam.replace("marked.bai", "marked.bam.bai")
+			new_bai = filter_merge_bam + ".bai"
+			subprocess.call(["ln", "-s", "-f", old_bai, new_bai])
+
+		cfcr_stat_file = os.path.join(statistics_report_dir, "CFCR.stat")
 		wcfcr_stat_file = open(cfcr_stat_file, 'w')
 		stat_line = "Item" + "\t" + "CF/CR length" + "\t" + "genome_size" + "\t" + "CF/CR depth\n"
 		wcfcr_stat_file.write(stat_line)
@@ -328,7 +490,24 @@ class CFCR:
 		stat_line = "CR:" + "\t" + str(all_CR) + "\t" + str(all_CF) + "\t" + str(CR_depth) + "\n"
 		wcfcr_stat_file.write(stat_line)
 		wcfcr_stat_file.close()
-		return(cfcr_stat_file)
+
+		molecule_length_distribution_file = os.path.join(statistics_report_dir, "molecule_length_distribution.txt")
+		wmolecule_length_distribution_file = open(molecule_length_distribution_file, 'w')
+		wmolecule_length_distribution_file.write("#molecule_length\tamount\n")
+		for molecule_length_id in sorted(molecule_length_distribution.keys()):
+			info = str(molecule_length_id) + "\t" + str(molecule_length_distribution[molecule_length_id]) + "\n"
+			wmolecule_length_distribution_file.write(info)
+		wmolecule_length_distribution_file.close()
+		wbarcode_molecule_amount_file.close()
+		wmolecule_really_covered_file.close()
+
+		for n in range(0,max(molecule_coverage_distribution.keys()) + 1):
+			rate = round(100.0 * molecule_coverage_distribution[n] / molecule_coverage_distribution_sum, 2)
+			info = str(n * 0.01) + "\t" + str(rate) + "\n"
+			wmolecule_coverage_distribution_file.write(info)
+		wmolecule_coverage_distribution_file.close()
+
+		return(statistics_report_dir)
 
 def usage():
 	calculation_usage = \
@@ -358,12 +537,15 @@ if __name__ == '__main__':
 	inputbam = None
 	outputdir = None
 	ConfigFile = None
-	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:o:c:h:', ['input', 'outputdir', 'config', 'help'])
+	Molecule_length = 0
+	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:o:m:c:h:', ['input', 'outputdir', 'molecule', 'config', 'help'])
 	for o, a in opts:
 		if o == '-i' or o == '--input':
 			inputbam = a
 		if o == '-o' or o == '--outputdir':
 			outputdir = a
+		if o == '-m' or o == '--molecule':
+			Molecule_length = int(a)
 		if o == '-c' or o == '--config':
 			ConfigFile = a
 		if o == '-h' or o == '--help':
@@ -400,5 +582,5 @@ if __name__ == '__main__':
 	sys.stderr.write("[ %s ] splited and sorted sam file list: %s \n\n" % (time.asctime(), Samfilepath))
 
 	sys.stderr.write("[ %s ] calculating CF/CR ... \n" % time.asctime())
-	stattxt = C.calculate(Samfilepath, genomesize, samdir)
-	sys.stderr.write("[ %s ] CF/CR has been written to %s \n" % (time.asctime(), stattxt))
+	report_dir = C.calculate(Samfilepath, genomesize, samdir, inputbam, samtools, Molecule_length)
+	sys.stderr.write("[ %s ] files of CF/CR, molecule distribution, molecule coverage and other infos have been placed in directory: %s \n" % (time.asctime(), report_dir))

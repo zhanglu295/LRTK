@@ -59,6 +59,27 @@ class baseinfo:
 		abs_path = self.get_path('fastqc')
 		return abs_path
 
+class sequence_quality:
+	def countfq(self, quality_info, basic_quality):
+		q20 = 0
+		q30 = 0
+		_quality_list = str(quality_info)
+		for qua in _quality_list:
+			ordqua = ord(qua) - int(basic_quality)
+			if ordqua >= 20:
+				q20 += 1
+			if ordqua >= 30:
+				q30 += 1
+		return(q20, q30)
+
+	def check_quality_version(self, quality_info):
+		lennum = len(re.compile(r'[a-z]').findall(quality_info))
+		qualen = len(quality_info)
+		QUALITY = 33
+		if lennum / qualen > 0.1:
+			QUALITY = 64
+		return QUALITY
+
 class extract_barcode:
 	def revise(self, rawfq, outdir):
 		if rawfq.endswith('gz'):
@@ -113,10 +134,6 @@ class modify_barcode:
 		newfqfile1 = prefix + "_1.fq.gz"
 		newfqfile2 = prefix + "_2.fq.gz"
 
-		logdir = os.path.dirname(barcode_sam)
-		barcode_stat = logdir + "/barcode_correct.log"
-		wbarcode_stat = open(barcode_stat, 'w')
-
 		original_barcode_count = 0
 		mapped_barcode_count = 0
 		corrected_barcode_count = 0
@@ -132,6 +149,27 @@ class modify_barcode:
 
 		newfq1_out = gzip.open(newfqfile1, 'wb')
 		newfq2_out = gzip.open(newfqfile2, 'wb')
+
+		statout = prefix + ".fq_statistics.txt"
+		wstatout = open(statout, 'w')
+
+		raw_fq1_info_list = list()
+		raw_fq2_info_list = list()
+		clean_fq1_info_list = list()
+		clean_fq2_info_list = list()
+
+		count_info1_list = list()
+		count_info2_list = list()
+
+		for n in range(5):
+			raw_fq1_info_list.append(0)
+			raw_fq2_info_list.append(0)
+			clean_fq1_info_list.append(0)
+			clean_fq2_info_list.append(0)
+			count_info1_list.append(0)
+			count_info2_list.append(0)
+
+		QUALITY_version = 33
 
 		while True:
 			barcodeinfo = samfile.readline()
@@ -174,6 +212,27 @@ class modify_barcode:
 				barcodeinfo = barcodeinfo.strip()
 				barcodeinfo = re.split("\t", barcodeinfo)
 
+				count_info1_list[0] = len(rawfq_seq1) - 23
+				count_info2_list[0] = len(rawfq_seq2)
+				count_info1_list[1] = 1
+				count_info2_list[1] = 1
+				count_info1_list[2] = (rawfq_seq1[23:]).count("C") + (rawfq_seq1[23:]).count("G") 
+				count_info2_list[2] = rawfq_seq2.count("C") + rawfq_seq2.count("G")
+
+				if count_info1_list[1] == 1:
+					QUALITY_version = sequence_quality().check_quality_version(rawfq_qua2)
+
+				(raw1q20, raw1q30) = sequence_quality().countfq(rawfq_qua1[23:], QUALITY_version)
+				count_info1_list[3] = raw1q20
+				count_info1_list[4] = raw1q30
+				(raw2q20, raw2q30) = sequence_quality().countfq(rawfq_qua2, QUALITY_version)
+				count_info2_list[3] = raw2q20
+				count_info2_list[4] = raw2q30
+
+				for n in range(len(count_info1_list)):
+					raw_fq1_info_list[n] += count_info1_list[n]
+					raw_fq2_info_list[n] += count_info2_list[n]
+
 				id1 = re.split(" ", rawfq_id1)
 				if id1[0] != ('@' + barcodeinfo[0]):
 					sys.stderr.write("ERROR - %s and %s do not match!\n" % (id1[0], barcodeinfo[0]))
@@ -210,19 +269,18 @@ class modify_barcode:
 							barcode_ori[ix] = alter[i]
 
 					if barcode_err == 0:
+						for n in range(len(count_info1_list)):
+							clean_fq1_info_list[n] += count_info1_list[n]
+							clean_fq2_info_list[n] += count_info2_list[n]
+
 						realbarcode = "".join(barcode_ori)
 					
 						newfq_seq1 = realbarcode + rawfq_seq1[23:]
-#					rsq = str(rawfq_seq1[24:])
-#					k = "\t".join([str(len(realbarcode)), str(len(rsq)), str(len(newfq_seq1))])
-#					print(k)
 						newfq_qua1 = realbarcodequa + rawfq_qua1[23:]
 						newfq1 = rawfq_id1 + "\n" + newfq_seq1 + "\n" + rawfq_str1 + "\n" + newfq_qua1 + "\n"
 						newfq_seq2 = str(realbarcode) + str(rawfq_seq2)
 						newfq_qua2 = str(realbarcodequa) + str(rawfq_qua2)
 						newfq2 = "\n".join([rawfq_id2, newfq_seq2, rawfq_str2, newfq_qua2, ""])
-#					k = "\t".join([str(len(newfq_seq2)), str(len(newfq_qua2))])
-#					print(k)
 
 						newfq1_out.write(newfq1.encode())
 						newfq2_out.write(newfq2.encode())
@@ -242,13 +300,41 @@ class modify_barcode:
 		newfq2_out.close()
 		if add == 1:
 			wBXfq.close()
-		barcode_log = "amount of barcode in original fastq:\t" + str(original_barcode_count) + "\n"
-		wbarcode_stat.write(barcode_log)
-		barcode_log = "amount of barcode that mapped to the white list:\t" + str(mapped_barcode_count) + "\n"
-		wbarcode_stat.write(barcode_log)
-		barcode_log = "amount of barcode that perfectly mapped to the white list after corrected:\t" + str(corrected_barcode_count) + "\n"
-		wbarcode_stat.write(barcode_log)
-		wbarcode_stat.close()
+
+		raw_fq1_info_list[1] = int(raw_fq1_info_list[0] / raw_fq1_info_list[1])
+		raw_fq2_info_list[1] = int(raw_fq2_info_list[0] / raw_fq2_info_list[1])
+		clean_fq1_info_list[1] = int(clean_fq1_info_list[0] / clean_fq1_info_list[1])
+		clean_fq2_info_list[1] = int(clean_fq2_info_list[0] / clean_fq2_info_list[1])
+		for n in range(2, 5):
+			raw_fq1_info_list[n] = round(100.00 * raw_fq1_info_list[n] / raw_fq1_info_list[0], 3)
+			raw_fq2_info_list[n] = round(100.00 * raw_fq2_info_list[n] / raw_fq2_info_list[0], 3)
+			clean_fq1_info_list[n] = round(100.00 * clean_fq1_info_list[n] / clean_fq1_info_list[0], 3)
+			clean_fq2_info_list[n] = round(100.00 * clean_fq2_info_list[n] / clean_fq2_info_list[0], 3)
+
+		statlog = "#Sequencing quality report\n" + os.path.basename(prefix) + "\tYield(bp)\tRead_length(bp)\tGC(%)\tQ20(%)\tQ30(%)\n"
+		wstatout.write(statlog)
+		for n in range(len(raw_fq1_info_list)):
+			raw_fq1_info_list[n] = str(raw_fq1_info_list[n])
+			raw_fq2_info_list[n] = str(raw_fq2_info_list[n])
+			clean_fq1_info_list[n] = str(clean_fq1_info_list[n])
+			clean_fq2_info_list[n] = str(clean_fq2_info_list[n])
+		statlog = "raw fastq1:\t" + "\t".join(raw_fq1_info_list) + "\n"
+		wstatout.write(statlog)
+		statlog = "raw fastq2:\t" + "\t".join(raw_fq2_info_list) + "\n"
+		wstatout.write(statlog)
+		statlog = "clean fastq1:\t" + "\t".join(clean_fq1_info_list) + "\n"
+		wstatout.write(statlog)
+		statlog = "clean fastq2:\t" + "\t".join(clean_fq2_info_list) + "\n\n"
+		wstatout.write(statlog)
+		statlog = "#Barcode correction report\namount of barcode in original fastq:\t" + str(original_barcode_count) + "\t100.0%\n"
+		wstatout.write(statlog)
+		qrate = round(100.0 * mapped_barcode_count / original_barcode_count, 2)
+		statlog = "amount of barcode that mapped to the white list:\t" + str(mapped_barcode_count) + "\t" + str(qrate) + "%\n"
+		wstatout.write(statlog)
+		qrate = round(100.0 * corrected_barcode_count / original_barcode_count, 2)
+		statlog = "amount of barcode that perfectly mapped to the white list after corrected:\t" + str(corrected_barcode_count) + "\t" + str(qrate) + "%\n"
+		wstatout.write(statlog)
+		wstatout.close()
 
 		return(prefix)
 
