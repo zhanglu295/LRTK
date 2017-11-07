@@ -463,7 +463,7 @@ def usage():
 	Options:
 		-i --input, the input path of compressed or uncompressed fastq files.
 		-o --outputdir, the path of output directory
-		-c --config, the path of configuration file [default: outdir/config/QC.config]
+		-c --config, the path of configuration file [default: outdir/config/Basic.config]
 		-N --noBX, add BX info to the end of read id or not [default yes]
 		-h --help, help info
 
@@ -500,12 +500,12 @@ if __name__ == '__main__':
 		check_info(config_dir)
 		tmpshell = os.path.join(config_dir, "cc.sh")
 		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join(["python", create_config_py, "QC -o", config_dir, "\n"])
+		shell_line = " ".join(["python", create_config_py, "Basic -o", config_dir, "\n"])
 		wtmpshell.write(shell_line)
 		wtmpshell.close()
 		subprocess.call(["sh", tmpshell])
 		subprocess.call(["rm", tmpshell])
-		ConfigFile = os.path.join(config_dir, "QC.config")
+		ConfigFile = os.path.join(config_dir, "Basic.config")
 
 	O = OUTERSOFT()
 

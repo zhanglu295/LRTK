@@ -108,7 +108,7 @@ def usage():
 	Options:
 		-i --input, file that include the path all bam files that belong to a single individual
 		-o --output, path of the output bam file
-		-c --config, the path of configuration file [default: outdir/config/QC.config]
+		-c --config, the path of configuration file [default: outdir/config/Basic.config]
 		-h --help, help info
 
 	'''
@@ -144,12 +144,12 @@ if __name__ == '__main__':
 			os.mkdir(config_dir)
 		tmpshell = os.path.join(config_dir, "cc.sh")
 		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join(["python", create_config_py, "QC -o", config_dir, "\n"])
+		shell_line = " ".join(["python", create_config_py, "Basic -o", config_dir, "\n"])
 		wtmpshell.write(shell_line)
 		wtmpshell.close()
 		subprocess.call(["sh", tmpshell])
 		subprocess.call(["rm", tmpshell])
-		ConfigFile = os.path.join(config_dir, "QC.config")
+		ConfigFile = os.path.join(config_dir, "Basic.config")
 
 	O = OUTERSOFT()
 

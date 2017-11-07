@@ -209,7 +209,7 @@ def usage():
 		-i --input, prefix of pair-end fq file, input_1.fq.gz and input_2.fq.gz must be valid
 		-o --outputdir, the path of output directory
 		-r --RG, RG info for alignment
-		-c --config, the path of configuration file [default: outdir/config/QC.config]
+		-c --config, the path of configuration file [default: outdir/config/Basic.config]
 		-h --help, help info
 
 	'''
@@ -248,12 +248,12 @@ if __name__ == '__main__':
 			os.mkdir(config_dir)
 		tmpshell = os.path.join(config_dir, "cc.sh")
 		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join(["python", create_config_py, "QC -o", config_dir, "\n"])
+		shell_line = " ".join(["python", create_config_py, "Basic -o", config_dir, "\n"])
 		wtmpshell.write(shell_line)
 		wtmpshell.close()
 		subprocess.call(["sh", tmpshell])
 		subprocess.call(["rm", tmpshell])
-		ConfigFile = os.path.join(config_dir, "QC.config")
+		ConfigFile = os.path.join(config_dir, "Basic.config")
 
 	if RGInfo == 0:
 		sys.stderr.write("\n\nWarnings: RG info was not defined, this might cause unpredictable error in subsequent blocks!\n\n")

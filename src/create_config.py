@@ -4,6 +4,76 @@ import time
 import re
 
 class create_config:
+	def make_intervals(self, original_region, size, outputdir, dataset_dir):
+		dataset_dir = str(dataset_dir)
+		fai = dataset_dir + '/genome/genome.fa.fai'
+		maxsize = dict()
+		rfai = open(fai, 'r')
+		for fai_info in rfai:
+			fai_info_list = re.split("\t", fai_info.strip())
+			maxsize[fai_info_list[0]] = int(fai_info_list[1])
+		rfai.close()
+
+		roriginal_region = open(original_region, 'r')
+		out_intervals = outputdir + "/extend.intervals"
+		wout_intervals = open(out_intervals, 'w')
+		chr_id = None
+		ori_min = None
+		ori_max = 0
+		ext_min = None
+		ext_max = 0
+		for bedinfo in roriginal_region:
+			(chrid, start, end) = re.split("\t", bedinfo.strip())
+			start = int(start)
+			end = int(end)
+			if chr_id == None:
+				chr_id = chrid
+				ori_min = start
+				ori_max = end
+				if start - size < 0:
+					ext_min = 1
+				else:
+					ext_min = start - size
+				ext_max = end + size
+			else:
+				if chr_id != chrid:
+					if maxsize[chr_id] <= ext_max:
+						ext_max = maxsize[chr_id]
+					intervals = str(chr_id) + ":" + str(ext_min) + "-" + str(ext_max) + "\n"
+					wout_intervals.write(intervals)
+					chr_id = chrid
+					ori_min = start
+					ori_max = end
+					if start - size < 0:
+						ext_min = 1
+					else:
+						ext_min = start - size
+					ext_max = end + size
+				else:
+					if ori_min > start:
+						sys.stderr.write("ERROR: the input bed file was not sorted!\n")
+						sys.exit(-1)
+					else:
+						if start - size > ext_max:
+							intervals = str(chr_id) + ":" + str(ext_min) + "-" + str(ext_max) + "\n"
+							wout_intervals.write(intervals)
+							ori_min = start
+							ori_max = end
+							ext_min = start - size
+							ext_max = end + size
+						else:
+							ori_min = start
+							ori_max = end
+							ext_max = end + size
+		if maxsize[chr_id] <= ext_max:
+			ext_max = maxsize[chr_id]
+		intervals = str(chr_id) + ":" + str(ext_min) + "-" + str(ext_max-size) + "\n"
+		wout_intervals.write(intervals)
+		wout_intervals.close()
+		roriginal_region.close()
+
+		return(out_intervals)
+
 	def Basic_config(self, Basic_config_file, script_dir, dataset_dir):
 		wBasic_config_file = open(Basic_config_file, 'w')
 		script_abs_path = os.path.abspath(sys.argv[0])
@@ -11,6 +81,7 @@ class create_config:
 		samtools = script_dir + '/samtools'
 		picard = script_dir + '/picard.jar'
 		fastqc = script_dir + '/FastQC/fastqc'
+		gatk = script_dir + '/GenomeAnalysisTK.jar'
 		java = 'java'
 		config_line = "\n".join(["###basic software", "bwa = " + bwa, "samtools = " + samtools, "picard = " + picard, "java = " + java, "", ""])
 		wBasic_config_file.write(config_line)
@@ -26,6 +97,10 @@ class create_config:
 		wBasic_config_file.write(config_line)
 		config_line = "\n".join(["###statistics", "barcode_index = -k12", "genomesize = 2861343787", "", ""])
 		wBasic_config_file.write(config_line)
+		dbsnp_vcf = dataset_dir + '/dbsnp137.vcf'
+		gold_indel_vcf = dataset_dir + '/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf'
+		config_line = "\n".join(["###BQSR", "gatk = " + gatk, "dbsnp = " + dbsnp_vcf, "gold_indel = " + gold_indel_vcf, "intervals = " + extended_intervals, "", ""])
+		wBasic_config_file.write(config_line)
 		wBasic_config_file.close()
 
 	def Reseq_config(self, Reseq_config_file, script_dir, dataset_dir):
@@ -33,12 +108,12 @@ class create_config:
 		script_dir = str(script_dir)
 		dataset_dir = str(dataset_dir)
 		genome_fa = dataset_dir + '/genome/genome.fa'
-		gatk = script_dir + '/gatk-package-4.beta.1-local.jar'
+		gatk = script_dir + '/GenomeAnalysisTK.jar'
 		dbsnp = dataset_dir + '/dbsnp137.vcf'
 		java = 'java'
 		config_line = "\n".join(["###basic software", "java = " + java, "", ""])
 		wReseq_config_file.write(config_line)
-		config_line = "\n".join(["###variation call", "gatk = " + gatk, "ref = " + genome_fa, "dbsnp = " + dbsnp, "HaplotypeCaller_par = --variant_index_type LINEAR --variant_index_parameter 128000", "GenotypeGVCFs_par = None", "", ""])
+		config_line = "\n".join(["###variation call", "gatk = " + gatk, "ref = " + genome_fa, "dbsnp = " + dbsnp, "HaplotypeCaller_par = --variant_index_type LINEAR --variant_index_parameter 128000", "GenotypeGVCFs_par = None", "intervals = " + extended_intervals, "", ""])
 		wReseq_config_file.write(config_line)
 		config_line = "\n".join(["###SV call", "", ""])
 		wReseq_config_file.write(config_line)
@@ -93,6 +168,7 @@ def usage():
 		-o --outputdir, the path of output directory
 		-s --softwarepath, the path of directory where all software were installed
 		-d --datasetpath, dataset directory
+		-b --bed, target region of WES/target sequencing data, or non-N region of the whole genome [chr	strt	bed]
 		-h --help, help info
 
 	'''
@@ -107,6 +183,8 @@ if __name__ == '__main__':
 		outputdir = None
 		SoftwarePathDir = None
 		DatasetPathDir = None
+		target_bed = None
+		extend_size = 500
 
 		commandlist = ["Basic", "Reseq", "Denovo", "all"]
 		if command not in commandlist:
@@ -114,7 +192,7 @@ if __name__ == '__main__':
 			usage()
 			sys.exit(-1)
 
-		opts, args = getopt.gnu_getopt(sys.argv[2:], 'o:s:d:h:', ['outputdir', 'softwarepath', 'datasetpath', 'help'])
+		opts, args = getopt.gnu_getopt(sys.argv[2:], 'o:s:d:b:e:h:', ['outputdir', 'softwarepath', 'datasetpath', 'bed', 'extend', 'help'])
 		for o, a in opts:
 			if o == '-o' or o == '--outputdir':
 				outputdir = str(a)
@@ -122,11 +200,16 @@ if __name__ == '__main__':
 				SoftwarePathDir = str(a)
 			if o == '-d' or o == '--datasetpath':
 				DatasetPathDir = str(a)
+			if o == '-b' or o == '--bed':
+				target_bed = str(a)
+			if o == '-e' or o == '--extend':
+				extend_size = int(a)
 			if o == '-h' or o == '--help':
 				usage()
 				sys.exit(-1)
 
 		C = create_config()
+		extended_intervals = C.make_intervals(target_bed, extend_size, outputdir, DatasetPathDir)
 		if command == "Basic" or command == "all":
 			config_file = os.path.join(outputdir, "Basic.config")
 			C.Basic_config(config_file, SoftwarePathDir, DatasetPathDir)

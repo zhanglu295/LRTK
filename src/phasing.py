@@ -1,13 +1,14 @@
 import os, sys, getopt
 import time
 import re, subprocess
+import pysam
 
 class baseinfo:
 	def __init__(self):
 		self.configdist = {}
 
 	def get_config(self, configFile):
-		o_config = open (configFile, 'r')
+		o_config = open(configFile, 'r')
 		for config_line in o_config:
 			config_line = config_line.strip()
 			if len(config_line) == 0:
@@ -26,6 +27,7 @@ class baseinfo:
 		o_config.close()
 
 	def get_path(self, name_variable):
+		print(name_variable)
 		if name_variable in self.configdist:
 			ABS_PATH = self.configdist[name_variable]
 			if ABS_PATH == "None":
@@ -99,43 +101,74 @@ if __name__ == '__main__':
 		if o == '-h' or o == '--help':
 			usage()
 			sys.exit(-1)
+		
+	if ConfigFile == None:
+		sys.stderr.write("configuration file (-c) does not exist! Please generate it using 'python LRTK_simple.py Config'\n")
 
-		G = baseinfo()
+	G = baseinfo()
+	G.get_config(ConfigFile)
 
-		javapath = G.Java()
-		Path_extractHAIRS = G.ExtractHAIRS()
-		Path_HAPCUT2 = G.HAPCUT2()
-		PathSNAPSHOT = G.Fgbio()
+	javapath = G.Java()
+	Path_extractHAIRS = G.ExtractHAIRS()
+	Path_HAPCUT2 = G.HAPCUT2()
+	PathSNAPSHOT = G.Fgbio()
 
-		PhaseVcf = None
-		vcfname = os.path.basename(UnphaseVcf)
-		if vcfname.endswith('.gz'):
-			b = str(vcfname)
-			b = b[0:(len(b)-3)]
-			newUnphaseVcf = outputdir + '/' + b
-			subprocess.call(["gunzip -c", UnphaseVcf, ">", newUnphaseVcf])
-			UnphaseVcf = newUnphaseVcf
-			vcfname = b
+	PhaseVcf = None
+	vcfname = os.path.basename(UnphaseVcf)
+	if vcfname.endswith('.gz'):
+		b = str(vcfname)
+		b = b[0:(len(b)-3)]
+		newUnphaseVcf = outputdir + '/' + b
+		subprocess.call(["gunzip -c", UnphaseVcf, ">", newUnphaseVcf])
+		UnphaseVcf = newUnphaseVcf
+		vcfname = b
 
-		if vcfname.endswith(".vcf"):
-			b = str(vcfname)
-			PhaseVcf = outputdir + '/' + b[0:(len(b)-4)] + ".phased.vcf"
-		else:
-			PhaseVcf = outputdir + '/' + vcfname + ".phased.vcf"
+	if vcfname.endswith(".vcf"):
+		b = str(vcfname)
+		PhaseVcf = outputdir + '/' + b[0:(len(b)-4)] + ".phased.vcf"
+	else:
+		PhaseVcf = outputdir + '/' + vcfname + ".phased.vcf"
 
-		fragment_file = PhaseVcf.replace("phased.vcf", "phased.fragment")
-		haplotype_output_file = PhaseVcf.replace("phased.vcf", "haplotype.txt")
+	fragment_file = PhaseVcf.replace("phased.vcf", "phased.fragment")
+	haplotype_output_file = PhaseVcf.replace("phased.vcf", "haplotype.txt")
 
-		tmpdir = outputdir
-		tmpshell = os.path.join(tmpdir, "phase.sh")
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join([Path_extractHAIRS, "--bam", Markedbam, "--VCF", UnphaseVcf, "--out", fragment_file, "\n"])
-		wtmpshell.write(shell_line)
-		shell_line = " ".join([Path_HAPCUT2, "--fragments", fragment_file, "--vcf", UnphaseVcf, "--output", haplotype_output_file, "\n"])
-		wtmpshell.write(shell_line)
-		shell_line = " ".join([javapath, "-jar", PathSNAPSHOT, "HapCutToVcf -v", UnphaseVcf, "-i", haplotype_output_file, "-o", PhaseVcf, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
+	tmpdir = outputdir
+	tmpshell = os.path.join(tmpdir, "phase.sh")
+	wtmpshell = open(tmpshell, 'w')
+	shell_line = " ".join([Path_extractHAIRS, "--bam", Markedbam, "--VCF", UnphaseVcf, "--out", fragment_file, "\n"])
+	wtmpshell.write(shell_line)
+	shell_line = " ".join([Path_HAPCUT2, "--fragments", fragment_file, "--vcf", UnphaseVcf, "--output", haplotype_output_file, "\n"])
+	wtmpshell.write(shell_line)
+	shell_line = " ".join([javapath, "-jar", PathSNAPSHOT, "HapCutToVcf -v", UnphaseVcf, "-i", haplotype_output_file, "-o", PhaseVcf, "\n"])
+	wtmpshell.write(shell_line)
+	wtmpshell.close()
 
-		subprocess.call(["sh", tmpshell])
-		sys.stderr.write("[ %s ] phased vcf file has been writeen to %s\n\n" % (time.asctime(), PhaseVcf))
+	subprocess.call(["sh", tmpshell])
+	print("[ %s ] phased vcf file has been writeen to %s\n\n" % (time.asctime(), PhaseVcf))
+
+	readdict = dict()
+	rfragment = open(fragment_file, 'r')
+	for fragmentinfo in rfragment:
+		fragmentinfolist = re.split("\s", fragmentinfo.strip())
+		readdict[fragmentinfolist[1]] = fragmentinfolist[0]
+	rfragment.close()
+
+	PhasedBam = Markedbam.replace("bam", "addPhaseInfo.bam")
+	rbam = pysam.AlignmentFile(Markedbam, 'rb')
+	wbam = pysam.AlignmentFile(PhasedBam, 'wb', template = rbam)
+	for read in rbam:
+		newinfo = pysam.AlignedSegment()
+		newinfo = read
+		newtags = newinfo.tags
+#		for eachtag in newinfo.tags:
+#			if eachtag[0] != "BD" and eachtag[0] != "BI":
+#				newtags.append(eachtag)
+		addtag = ("HP", 0)
+		if newinfo.query_name in readdict:
+			addtag = ("HP", readdict[newinfo.query_name])
+		newtags.append(addtag)
+		newinfo.tags = newtags
+		wbam.write(newinfo)
+	rbam.close()
+	wbam.close()
+	print("[ %s ] phasing info has been supplemented: %s \n" % (time.asctime(), PhasedBam))
