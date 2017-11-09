@@ -40,10 +40,10 @@ python LRTK.py \<command\> [options]
 `Basicall` including `CFQ_ALN`, `MARK`, `BQSR`, `STAT` and `MERGE`, it would run all these patterns step by step. Moreover, you can also run these patterns step by step yourself, using `‘Basic’` patterns.
 
 ##### Basic:
->python LRTK_simple.py Basic \<command\> [options] <br>
->>`CFQ_ALN` generate clean fastq files and correct barcode error <br>
->>`MARK`    merge all bam files belong to the same library of each sample, and barcode aware PCR duplication removal (must complete ALN) <br>
->>`BQSR`    recalibrate base quality scores, using GATK. <br>
->>`STAT`    calculate QC statistics, including Cf, Cr, MuFL, NFP etc. (must complete CFQ and ALN) <br>
->>`MERGE`   merge all bam files belong to the same sample <br>
+    python LRTK_simple.py Basic \<command\> [options]
+    CFQ_ALN generate clean fastq files and correct barcode error
+    MARK    merge all bam files belong to the same library of each sample, and barcode aware PCR duplication removal (must complete ALN) 
+    BQSR    recalibrate base quality scores, using GATK.
+    STAT    calculate QC statistics, including Cf, Cr, MuFL, NFP etc. (must complete CFQ and ALN)
+    MERGE   merge all bam files belong to the same sample
 
