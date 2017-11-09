@@ -28,22 +28,22 @@ python LRTK.py \<command\> [options]
 #### Basicall
     python LRTK_simple.py Basicall [options]
     requisite options:
-    -i --input, the input file containing fastq information (The input file contains three columns:1.Sample ID;2.Library ID;3. Path to sample fastqs). <br>
-    -o --outputdir, the path to output <br>
-    -c --config, configuration file [default: outdir/config/Basic.config] <br>
+    -i --input, the input file containing fastq information (The input file contains three columns:1.Sample ID;2.Library ID;3. Path to sample fastqs).
+    -o --outputdir, the path to output
+    -c --config, configuration file [default: outdir/config/Basic.config]
 
-`alternative options:` <br>
-    -m --molecule, number. molecule length less than it would be discarded [default: 500] <br>
-    -p --parallel, the number of fq pairs that processing parallel. The max amount of invoking CPU would be 4*(-p) [default: 1] <br>
-    -N --noBX, generate additional fq file that has BX info or not [default: yes] <br>
+    alternative options:
+    -m --molecule, number. molecule length less than it would be discarded [default: 500]
+    -p --parallel, the number of fq pairs that processing parallel. The max amount of invoking CPU would be 4*(-p) [default: 1]
+    -N --noBX, generate additional fq file that has BX info or not [default: yes]
 
 `Basicall` including `CFQ_ALN`, `MARK`, `BQSR`, `STAT` and `MERGE`, it would run all these patterns step by step. Moreover, you can also run these patterns step by step yourself, using `‘Basic’` patterns.
 
 ##### Basic:
-python LRTK_simple.py Basic \<command\> [options] <br>
-`CFQ_ALN` generate clean fastq files and correct barcode error <br>
-`MARK`    merge all bam files belong to the same library of each sample, and barcode aware PCR duplication removal (must complete ALN) <br>
-`BQSR`    recalibrate base quality scores, using GATK. <br>
-`STAT`    calculate QC statistics, including Cf, Cr, MuFL, NFP etc. (must complete CFQ and ALN) <br>
-`MERGE`   merge all bam files belong to the same sample <br>
+>python LRTK_simple.py Basic \<command\> [options] <br>
+>>`CFQ_ALN` generate clean fastq files and correct barcode error <br>
+>>`MARK`    merge all bam files belong to the same library of each sample, and barcode aware PCR duplication removal (must complete ALN) <br>
+>>`BQSR`    recalibrate base quality scores, using GATK. <br>
+>>`STAT`    calculate QC statistics, including Cf, Cr, MuFL, NFP etc. (must complete CFQ and ALN) <br>
+>>`MERGE`   merge all bam files belong to the same sample <br>
 
