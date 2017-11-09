@@ -55,5 +55,5 @@ python LRTK.py \<command\> [options]
     -N --noBX, generate additional fq file that has BX info or not [default: yes]
     -c --config, configuration file [default: outdir/config/Basic.config]
 
-`CFQ_ALN` verifies the barcode info and calculates the sequencing quality of original fastq files, and performs alignment using `bwa`. Output files would be listed in outputdir/Result_list/Basic_CFQ_ALN_result.txt. Meanwhile, list of input files for the next step `MARK` would be generate at the end of `CFQ_ALN`: outputdir/Result_list/Basic_MARK_input.txt. <br>
+`CFQ_ALN` verifies the barcode info and calculates the sequencing quality of original fastq files, and performs alignment using `bwa`. In order to speed up the scheme, multithreading is implemented, and the parallele number has been fixed as 4. Output files would be listed in outputdir/Result_list/Basic_CFQ_ALN_result.txt. Meanwhile, list of input files for the next step `MARK` would be generate at the end of `CFQ_ALN`: outputdir/Result_list/Basic_MARK_input.txt. <br>
 
