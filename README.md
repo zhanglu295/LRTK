@@ -19,6 +19,7 @@ python LRTK.py \<command\> [options]
     
 #### Config
     python LRTK.py Config [options]
+    
     Options:
     -o --outputdir, the path of output directory.
     -s --softwarepath, the path of directory where all software were installed [default: scriptdir/bin]
@@ -27,6 +28,7 @@ python LRTK.py \<command\> [options]
 
 #### Basicall
     python LRTK.py Basicall [options]
+    
     requisite options:
     -i --input, the input file containing fastq information (The input file contains three columns:1.Sample ID;2.Library ID;3. Path to sample fastqs).
     -o --outputdir, the path to output
@@ -41,6 +43,7 @@ python LRTK.py \<command\> [options]
 
 ##### Basic:
     python LRTK.py Basic \<command\> [options]
+    
     CFQ_ALN   generate clean fastq files and correct barcode error
     MARK      merge all bam files belong to the same library of each sample, and barcode aware PCR duplication removal (must complete ALN) 
     BQSR      recalibrate base quality scores, using GATK.
@@ -49,11 +52,22 @@ python LRTK.py \<command\> [options]
 
 ###### CFQ_ALN
     python LRTK.py Basic CFQ_ALN
+    
     -i --input, the input file containing fastq information (The input file contains three columns:1.Sample ID;2.Library ID;3. Path to sample fastqs).
     -o --outputdir, the path to output
     -p --parallel, the number of fq pairs that processing parallel. The max amount of invoking CPU would be 4*(-p) [default: 1]
     -N --noBX, generate additional fq file that has BX info or not [default: yes]
     -c --config, configuration file [default: outdir/config/Basic.config]
 
-`CFQ_ALN` verifies the barcode info and calculates the sequencing quality of original fastq files, and performs alignment using `bwa`. In order to speed up the scheme, multithreading is implemented, and the parallele number has been fixed as 4. Output files would be listed in outputdir/Result_list/Basic_CFQ_ALN_result.txt. Meanwhile, list of input files for the next step `MARK` would be generate at the end of `CFQ_ALN`: outputdir/Result_list/Basic_MARK_input.txt. <br>
+`CFQ_ALN` verifies the barcode info and calculates the sequencing quality of original fastq files, and performs alignment using [`bwa`](http://bio-bwa.sourceforge.net/). In order to speed up the scheme, multithreading is implemented, and the parallel number has been fixed as 4. Output files would be listed in outputdir/Result_list/Basic_CFQ_ALN_result.txt. Meanwhile, list of input files for the next step `MARK` would be generate at the end of `CFQ_ALN`: outputdir/Result_list/Basic_MARK_input.txt. <br>
+
+###### MARK
+    python LRTK.py Basic MARK
+
+    -i --input, the input file containing the information of bam files (The input file contains two columns:1.Sample Id;2.Library Id;3.Path to bam)
+    -o --outputdir, the path to output
+    -p --parallele, the number of fq pairs that processing parallel. The max amount of invoking CPU would be 4*(-p) [default: 1]
+    -c --config, configuration file [default: outdir/config/Basic.config]
+
+`MARK` merges bam files belonging to the same library(based on the 2nd column of the input file), and mark duplication reads that generated in PCR using [`picard`](http://broadinstitute.github.io/picard/). Output files would be listed in outputdir/Result_list/Basic_MARK_result.txt, and list of input file for the next step `BQSR` would be generated at the end of `MARK`: outputdir/Result_list/Basic_BQSR_input.txt <br>
 
