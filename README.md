@@ -14,10 +14,6 @@ https://software.broadinstitute.org/gatk/download/bundle
 
 `LRTK-SEQ` also provides an auxiliary programe `preinstall.sh` to preinstall all the requisite automatically. Please make sure your system is connected to the internet. All the software and dataset are downloaded and installed to `./bin` and `./dataset`, respectively.
 
-### Command:
-
-`sh preinstall.sh`
-
 ## Donwload `LRTK-SEQ` to local machine
 
 Please use `--recursive` to clone submodules simultaneously.
@@ -109,7 +105,7 @@ python LRTK.py Basicall -i fqlist.txt -o out_dir -c ./config/Basic.config <br>
     -p --parallel, the number CPUs can be used in parallel [default: 1] 
     -N --noBX, generate additional fastqs without barcode tags [default: yes]
 
-`CFQ_ALN` is similar as what `basic` and `align` in [Long ranger] (https://support.10xgenomics.com/genome-exome/software/pipelines/latest/what-is-long-ranger) do, including barcode error correction, barcode white-listing, attaching barcodes to reads, and read alignment by `bwa`. The description of output files are written in out_dir/Result_list/Basic_ALN_result.txt. Meanwhile, it also generates the input file for the next step `MARK`: out_dir/Result_list/Basic_MARK_input.txt. <br><br>
+`CFQ_ALN` is similar as what `basic` and `align` in [`Long ranger`](https://support.10xgenomics.com/genome-exome/software/pipelines/latest/what-is-long-ranger) do, including barcode error correction, barcode white-listing, attaching barcodes to reads, and read alignment by `bwa`. The description of output files are written in out_dir/Result_list/Basic_ALN_result.txt. Meanwhile, it also generates the input file for the next step `MARK`: out_dir/Result_list/Basic_MARK_input.txt. <br><br>
 
 eg. <br>
 python LRTK-SEQ.py Basic ALN -i fqlist.txt -o out_dir -c ./config/Basic.config <br>
