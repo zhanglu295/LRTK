@@ -607,7 +607,7 @@ def usage():
 		-i --input, path of input bam file
 		-o --outputdir, the path of output directory
 		-c --config, the path of configuration file [default: outdir/config/Basic.config]
-		-m --molecule, minimum molecule length [default: 500bp]
+		-m --minlen, minimum molecule length [default: 500bp]
 		-h --help, help info
 
 	'''
@@ -622,13 +622,13 @@ if __name__ == '__main__':
 	outputdir = None
 	ConfigFile = None
 	Molecule_length = 500
-	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:o:m:c:h:', ['input', 'outputdir', 'molecule', 'config', 'help'])
+	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:o:m:c:h:', ['input', 'outputdir', 'minlen', 'config', 'help'])
 	for o, a in opts:
 		if o == '-i' or o == '--input':
 			inputbam = a
 		if o == '-o' or o == '--outputdir':
 			outputdir = a
-		if o == '-m' or o == '--molecule':
+		if o == '-m' or o == '--minlen':
 			Molecule_length = int(a)
 		if o == '-c' or o == '--config':
 			ConfigFile = a
