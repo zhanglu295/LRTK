@@ -230,7 +230,7 @@ if __name__ == '__main__':
 	tmpshell = os.path.join(shelldir, "combine_vcf.sh")
 	wtmpshell = open(tmpshell, 'w')
 	#AllChrVcf = AllChrVcf.replace("--variant:", "-I")
-	shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "-genotypeMergeOptions PRIORITIZE -priority", chrpriority "\n"])
+	shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "-genotypeMergeOptions PRIORITIZE -priority", chrpriority, "\n"])
 	wtmpshell.write(shell_line)
 	wtmpshell.close()
 	subprocess.call(["sh", tmpshell])
