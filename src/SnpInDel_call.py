@@ -23,9 +23,6 @@ class baseinfo:
 				path = path.replace("'", "")
 				path = path.replace('"', '')
 
-				if path == "None":
-					path = " "
-
 				self.configdist[name] = path
 #				print (name, path)
 		o_config.close()
@@ -175,14 +172,14 @@ if __name__ == '__main__':
 		chrvcf = os.path.join(bychrvcfdir, ch + ".vcf")
 		wchrshell = open(chrshell, 'w')
 		if os.path.isfile(dbsnp):
-			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "-T HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "--dbsnp", dbsnp, "-L", ch, "-o", chrgvcf, "\n"])
+			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "--dbsnp", dbsnp, "-L", ch, "-O", chrgvcf, "\n"])
 		else:
-			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "-T HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "-L", ch, "-o", chrgvcf, "\n"])
+			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "-L", ch, "-O", chrgvcf, "\n"])
 		wchrshell.write(shell_line)
 		if os.path.isfile(dbsnp):
-			shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "-T GenotypeGVCFs --variant", chrgvcf, "-o", chrvcf, "--dbsnp", dbsnp, GenotypeGVCFs_par, "-L", ch, "\n"])
+			shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "GenotypeGVCFs --variant", chrgvcf, "-O", chrvcf, "--dbsnp", dbsnp, GenotypeGVCFs_par, "-L", ch, "\n"])
 		else:
-			shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "-T GenotypeGVCFs --variant", chrgvcf, "-o", chrvcf, GenotypeGVCFs_par, "-L", ch, "\n"])
+			shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "GenotypeGVCFs --variant", chrgvcf, "-O", chrvcf, GenotypeGVCFs_par, "-L", ch, "\n"])
 		ChrGvcflist.append(chrvcf)
 		wchrshell.write(shell_line)
 		wchrshell.close()
@@ -190,10 +187,10 @@ if __name__ == '__main__':
 		Chrshell.append(chrshell)
 		if chrpriority == None:
 			chrpriority = str(ch)
-			AllChrVcf = "--variant:" + ch + " " + chrvcf
+			AllChrVcf = "--variant:" + ch + " " + chrgvcf
 		else:
 			chrpriority = chrpriority + "," + str(ch)
-			AllChrVcf = AllChrVcf + " --variant:" + ch + " " + chrvcf
+			AllChrVcf = AllChrVcf + " --variant:" + ch + " " + chrgvcf
 	ShellNum = len(Chrshell)
 	## ParallelNum = 3
 	finishNum = 0
@@ -232,8 +229,8 @@ if __name__ == '__main__':
 	UnphaseVcf = os.path.join(vcfdir, "all.vcf")
 	tmpshell = os.path.join(shelldir, "combine_vcf.sh")
 	wtmpshell = open(tmpshell, 'w')
-#AllChrVcf = AllChrVcf.replace("--variant:", "-I")
-	shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "\n"])
+	#AllChrVcf = AllChrVcf.replace("--variant:", "-I")
+	shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "-genotypeMergeOptions PRIORITIZE -priority", chrpriority "\n"])
 	wtmpshell.write(shell_line)
 	wtmpshell.close()
 	subprocess.call(["sh", tmpshell])
