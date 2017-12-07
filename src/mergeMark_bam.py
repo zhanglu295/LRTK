@@ -80,11 +80,12 @@ class OUTERSOFT:
 		else:
 			os.mkdir(shelldir)
 		tmpshell = os.path.join(shelldir, "merge_bam.sh")
+		logfile = tmpshell + ".log"
 		wtmpshell = open(tmpshell, 'w')
 		if bamnum > 1:
-			shell_line = " ".join([java_path, "-Xmx5g -jar", picard_path, "MergeSamFiles", multiple_bam, "O=" + mergedbam, picard_paramter, "\n"])
+			shell_line = " ".join([java_path, "-Xmx5g -jar", picard_path, "MergeSamFiles", multiple_bam, "O=" + mergedbam, picard_paramter, "2>", logfile, "\n"])
 		else:
-			shell_line = " ".join(["ln -s", bamfiles, mergedbam, "\n"])
+			shell_line = " ".join(["ln -sf", bamfiles, mergedbam, "\n"])
 		wtmpshell.write(shell_line)
 		wtmpshell.close()
 		sys.stderr.write("[ %s ] merge bam files: %s \n\n" % (time.asctime(), bamfiles))
@@ -94,7 +95,9 @@ class OUTERSOFT:
 		
 	def picard_markdup(self, oribam, markedbam, java_path, picard_path, picard_paramter):
 		metrics = markedbam.replace('bam', 'metrics.txt')
-
+		shelldir = os.path.dirname(markedbam) + "/shell"
+		if os.path.isdir(shelldir) == False:
+			os.mkdir(shelldir)
 		bai = oribam.replace('bam', 'bai')
 		isbai = 0
 		if os.path.exists(bai):
@@ -103,28 +106,21 @@ class OUTERSOFT:
 			bai = oribam + '.bai'
 			if os.path.exists(bai):
 				isbai = 1
-		if isbai:
-			pass
-		else:
-			sys.stderr.write("bai not found, will produce bai file for bam automatically: %s\n" % bai)
-			tmpshell = bai + '.sh'
+		if isbai == 0:
+			sys.stderr.write("[ %s ] Warnings: 'bai' file was not found, and it would be generated automatically: %s\n\n" % (time.asctime(), bai))
+			tmpshell = shelldir + "/" + os.path.basename(bai) + '.sh'
+			logfile = tmpshell + ".log"
 			wtmpshell = open(tmpshell, 'w')
-			shell_line = " ".join([java_path, '-jar', picard_path, 'BuildBamIndex', "I=" + oribam, "O=" + bai, "\n"])
+			shell_line = " ".join([java_path, '-jar', picard_path, 'BuildBamIndex', "I=" + oribam, "O=" + bai, "2>", logfile, "\n"])
 			wtmpshell.write(shell_line)
-			print(shell_line)
 			wtmpshell.close()
 			subprocess.call(["sh", tmpshell])
-			subprocess.call(["rm", tmpshell])
 
 		sys.stderr.write("[ %s ] marking duplication ... \n" % (time.asctime()))
-		shelldir = os.path.dirname(markedbam) + "/shell"
-		if os.path.isdir(shelldir):
-			pass
-		else:
-			os.mkdir(shelldir)
 		tmpshell = os.path.join(shelldir, 'mark_duplicate.sh')
+		logfile = tmpshell + ".log"
 		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join([java_path, '-jar', picard_path, 'MarkDuplicates', "I=" + oribam, "O=" + markedbam, "M=" + metrics, picard_paramter, "\n"])
+		shell_line = " ".join([java_path, '-jar', picard_path, 'MarkDuplicates', "I=" + oribam, "O=" + markedbam, "M=" + metrics, picard_paramter, "2>", logfile, "\n"])
 		wtmpshell.write(shell_line)
 		wtmpshell.close()
 		subprocess.call(["sh", tmpshell])
@@ -137,16 +133,15 @@ def usage():
 	merge multiple files belong to the same library of each individual, and mark PCR duplication of the merged bam file
 	Version: 1.0.0
 	Dependents: Python (>=3.0), BWA, SAMtools, Picard (>=2.0)
-	Last Updated Date: 2017-06-01
-	Contact: meijp@foxmail.com
+	Last Updated Date: 2017-11-14
 
-	Usage: python mergeMark_bam.py <options>
+	Usage: python mergeMark_bam.py [options]
 
-	Options:
-		-i --input, file that include the path all bam files that belong to a single individual
-		-o --output, path of the output bam file
-		-c --config, the path of configuration file [default: outdir/config/Basic.config]
-		-h --help, help info
+	Basic options:
+		-i --input, file including the path of all the BAMs from the same individual
+		-o --output, path of the output BAM
+		-c --config, the path of configuration file [default: ./config/Basic.config]
+		-h --help, print help info
 
 	'''
 	print(merge_mark_usage)
@@ -171,22 +166,9 @@ if __name__ == '__main__':
 			usage()
 			sys.exit(-1)
 
-	if ConfigFile == None:
-		script_abs_path = os.path.abspath(sys.argv[0])
-		create_config_py = os.path.join(os.path.dirname(script_abs_path), "create_config.py")
-		config_dir = os.path.join(outputdir, "config")
-		if os.path.isdir(config_dir):
-			pass
-		else:
-			os.mkdir(config_dir)
-		tmpshell = os.path.join(config_dir, "cc.sh")
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join(["python", create_config_py, "Basic -o", config_dir, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
-		subprocess.call(["sh", tmpshell])
-		subprocess.call(["rm", tmpshell])
-		ConfigFile = os.path.join(config_dir, "Basic.config")
+	if ConfigFile == None or os.path.exists(ConfigFile) == False:
+		sys.stderr.write("configuration file has not been provided or does not exist, Please create it using 'python LRTK-SEQ.py Config'\n")
+		sys.exit(-1)
 
 	O = OUTERSOFT()
 
@@ -207,11 +189,14 @@ if __name__ == '__main__':
 		MergedBam = bamline[0].strip()
 		sys.stderr.write("[ %s ] there is only one bam file in the list: %s\n\n" % (time.asctime(), inputbamlist))
 
+	if MergedBam == None or os.path.exists(MergedBam) == False:
+		sys.stderr.write("[ %s ] ERROR: %s does not exist!\n" % (time.asctime(), MergedBam))
+		sys.exit(-1)
+
 	Markedbam = O.picard_markdup(MergedBam, outputbam, javapath, picardpath, picard_mark_parameter)
-	if os.path.exists(Markedbam):
-		sys.stderr.write("[ %s ] duplication reads have been marked, and the output has been written to %s \n" % (time.asctime(), Markedbam))
-	else:
-		sys.stderr.write("\nERROR: %s has not been created, please check the warning info and try again\n\n" % Markedbam)
+
+	if os.path.exists(Markedbam) == False:
+		sys.stderr.write("\n[ %s ] ERROR: %s has not been created, please check the warning info and try again\n\n" % (time.asctime(), Markedbam))
 		sys.exit(-1)
 	
 	tmpdir = os.path.dirname(Markedbam) + "/tmp"

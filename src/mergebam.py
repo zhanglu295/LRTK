@@ -80,13 +80,14 @@ class OUTERSOFT:
 		else:
 			os.mkdir(shelldir)
 		tmpshell = os.path.join(shelldir, "merge_bam.sh")
+		logfile = tmpshell + ".log"
 		wtmpshell = open(tmpshell, 'w')
 		if bamnum > 1:
-			shell_line = " ".join([java_path, "-Xmx5g -jar", picard_path, "MergeSamFiles", multiple_bam, "O=" + mergedbam, picard_paramter, "\n"])
+			shell_line = " ".join([java_path, "-Xmx5g -jar", picard_path, "MergeSamFiles", multiple_bam, "O=" + mergedbam, picard_paramter, "2>", logfile, "\n"])
 		else:
-			shell_line = " ".join(["ln -s", bamfiles, mergedbam, "\n"])
+			shell_line = " ".join(["ln -sf", bamfiles, mergedbam, "\n"])
 		wtmpshell.write(shell_line)
-		shell_line = " ".join([java_path, "-jar", picard_path, "BuildBamIndex", "I=" + mergedbam, "O=" + mergedbam + ".bai\n"])
+		shell_line = " ".join([java_path, "-jar", picard_path, "BuildBamIndex", "I=" + mergedbam, "O=" + mergedbam + ".bai", "2>>", logfile, "\n"])
 		wtmpshell.write(shell_line)
 		wtmpshell.close()
 		sys.stderr.write("[ %s ] merge bam files: %s \n\n" % (time.asctime(), bamfiles))
@@ -97,19 +98,19 @@ class OUTERSOFT:
 def usage():
 	merge_mark_usage = \
 	'''
-	merge multiple files belong to the same individual
+	merge multiple BAMs from the same individual
 	Version: 1.0.0
 	Dependents: Python (>=3.0), BWA, SAMtools, Picard (>=2.0)
-	Last Updated Date: 2017-06-01
-	Contact: meijp@foxmail.com
+	Last Updated Date: 2017-11-14
+	
 
 	Usage: python mergeMark_bam.py <options>
 
-	Options:
-		-i --input, file that include the path all bam files that belong to a single individual
-		-o --output, path of the output bam file
-		-c --config, the path of configuration file [default: outdir/config/Basic.config]
-		-h --help, help info
+	Basic options:
+		-i --input, file including the path of all the BAMs from the same individual
+		-o --output, path of the output BAMs
+		-c --config, the path of configuration file [default: ./config/Basic.config]
+		-h --help, print help info
 
 	'''
 	print(merge_mark_usage)
@@ -134,22 +135,9 @@ if __name__ == '__main__':
 			usage()
 			sys.exit(-1)
 
-	if ConfigFile == None:
-		script_abs_path = os.path.abspath(sys.argv[0])
-		create_config_py = os.path.join(os.path.dirname(script_abs_path), "create_config.py")
-		config_dir = os.path.join(outputdir, "config")
-		if os.path.isdir(config_dir):
-			pass
-		else:
-			os.mkdir(config_dir)
-		tmpshell = os.path.join(config_dir, "cc.sh")
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join(["python", create_config_py, "Basic -o", config_dir, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
-		subprocess.call(["sh", tmpshell])
-		subprocess.call(["rm", tmpshell])
-		ConfigFile = os.path.join(config_dir, "Basic.config")
+	if ConfigFile == None or os.path.exists(ConfigFile) == False:
+		sys.stderr.write("Configuration file does not exist, you can create it using 'python LRTK-seq.py Config'\n")
+		sys.exit(-1)
 
 	O = OUTERSOFT()
 
@@ -160,7 +148,9 @@ if __name__ == '__main__':
 	picard_merge_parameter = G.PicardMergeparameter()
 	picard_mark_parameter = G.PicardMarkparameter()
 
-	bamline = open(inputbamlist, 'r').readlines()
 	MergedBam = None
 	bamdir = os.path.dirname(outputbam)
 	MergedBam = O.picard_merge(inputbamlist, outputbam, javapath, picardpath, picard_merge_parameter)
+	if os.path.exists(MergedBam) == False:
+		sys.stderr.write("\nERROR: %s has not been created, please check the warning info and try again\n\n" % MergedBam)
+		sys.exit(-1)

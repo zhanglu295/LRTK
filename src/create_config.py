@@ -2,11 +2,12 @@ import os, sys
 import getopt
 import time
 import re
+import glob
 
 class create_config:
 	def make_intervals(self, original_region, size, outputdir, dataset_dir):
 		dataset_dir = str(dataset_dir)
-		fai = dataset_dir + '/genome/genome.fa.fai'
+		fai = dataset_dir + '/GATK_bundle/Homo_sapiens_assembly38.fasta.fai'
 		maxsize = dict()
 		rfai = open(fai, 'r')
 		for fai_info in rfai:
@@ -74,6 +75,21 @@ class create_config:
 
 		return(out_intervals)
 
+	def find_dbsnp(self, dataset_dir):
+		vcflist = glob.glob(dataset_dir + "/GATK_bundle/dbsnp_*.hg38.vcf*")
+		vcf_version = 0
+		vcf = None
+		for vcffile in vcflist:
+			if vcffile.endswith("idx") or vcffile.endswith("tbi"):
+				pass
+			else:
+				vr = (re.split("\.", ((re.split("/",vcffile))[-1])))[0]
+				vr = int(vr.replace("dbsnp_", ""))
+				if vr > vcf_version:
+					vcf_version = vr
+					vcf = vcffile
+		return(vcf)
+
 	def Basic_config(self, Basic_config_file, script_dir, dataset_dir):
 		wBasic_config_file = open(Basic_config_file, 'w')
 		script_abs_path = os.path.abspath(sys.argv[0])
@@ -85,20 +101,21 @@ class create_config:
 		java = 'java'
 		config_line = "\n".join(["###basic software", "bwa = " + bwa, "samtools = " + samtools, "picard = " + picard, "java = " + java, "", ""])
 		wBasic_config_file.write(config_line)
-		barcode_fa = dataset_dir + '/barcode/barcode.fa'
+		barcode_fa = dataset_dir + '/barcode_whitelist.fasta'
 		config_line = "\n".join(["###barcode modification", "barcode_fa = " + barcode_fa, "barcode_aln_parameter = -l 5", "fastqc = " + fastqc, "", ""])
 		wBasic_config_file.write(config_line)
-		genome_fa = dataset_dir + '/genome/genome.fa'
+		genome_fa = dataset_dir + '/GATK_bundle/Homo_sapiens_assembly38.fasta'
 		config_line = "\n".join(["###alignment", "ref = " + genome_fa, "fq_aln_parameter = -B 16", "fq_sampe_parameter = -a 1000", "", ""])
 		wBasic_config_file.write(config_line)
 		config_line = "\n".join(["###merge multiple bam files belong to the same files", "picard_merge_parameter = ASSUME_SORTED=true USE_THREADING=true VALIDATION_STRINGENCY=LENIENT", "", ""])
 		wBasic_config_file.write(config_line)
 		config_line = "\n".join(["###mark duplication", "picard_mark_parameter = BARCODE_TAG=BX REMOVE_DUPLICATES=false ASSUME_SORTED=true VALIDATION_STRINGENCY=LENIENT CREATE_INDEX=true", "", ""])
 		wBasic_config_file.write(config_line)
-		config_line = "\n".join(["###statistics", "barcode_index = -k12", "genomesize = 2861343787", "", ""])
+		config_line = "\n".join(["###statistics", "barcode_index = -k12", "genomesize = 2923732648", "", ""])
 		wBasic_config_file.write(config_line)
-		dbsnp_vcf = dataset_dir + '/dbsnp137.vcf'
-		gold_indel_vcf = dataset_dir + '/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf'
+#		dbsnp_vcf = dataset_dir + '/GATK_bundle/dbsnp_146.hg38.vcf'
+		dbsnp_vcf = self.find_dbsnp(dataset_dir)
+		gold_indel_vcf = dataset_dir + '/GATK_bundle/Mills_and_1000G_gold_standard.indels.hg38.vcf'
 		config_line = "\n".join(["###BQSR", "gatk = " + gatk, "dbsnp = " + dbsnp_vcf, "gold_indel = " + gold_indel_vcf, "intervals = " + extended_intervals, "", ""])
 		wBasic_config_file.write(config_line)
 		wBasic_config_file.close()
@@ -107,19 +124,20 @@ class create_config:
 		wReseq_config_file = open(Reseq_config_file, 'w')
 		script_dir = str(script_dir)
 		dataset_dir = str(dataset_dir)
-		genome_fa = dataset_dir + '/genome/genome.fa'
+		genome_fa = dataset_dir + '/GATK_bundle/Homo_sapiens_assembly38.fasta'
 		gatk = script_dir + '/GenomeAnalysisTK.jar'
-		dbsnp = dataset_dir + '/dbsnp137.vcf'
+#		dbsnp = dataset_dir + '/GATK_bundle/dbsnp_146.hg38.vcf'
+		dbsnp_vcf = self.find_dbsnp(dataset_dir)
 		java = 'java'
 		config_line = "\n".join(["###basic software", "java = " + java, "", ""])
 		wReseq_config_file.write(config_line)
-		config_line = "\n".join(["###variation call", "gatk = " + gatk, "ref = " + genome_fa, "dbsnp = " + dbsnp, "HaplotypeCaller_par = --variant_index_type LINEAR --variant_index_parameter 128000", "GenotypeGVCFs_par = None", "intervals = " + extended_intervals, "", ""])
+		config_line = "\n".join(["###variation call", "gatk = " + gatk, "ref = " + genome_fa, "dbsnp = " + dbsnp_vcf, "HaplotypeCaller_par = --variant_index_type LINEAR --variant_index_parameter 128000", "GenotypeGVCFs_par = None", "intervals = " + extended_intervals, "", ""])
 		wReseq_config_file.write(config_line)
 		config_line = "\n".join(["###SV call", "", ""])
 		wReseq_config_file.write(config_line)
 		Hapcut2 = script_dir + '/HAPCUT2'
 		ExtractHAIRS = script_dir + '/extractHAIRS'
-		fgbio = script_dir + '/fabio-0.2.0-SNAPSHOT.jar'
+		fgbio = script_dir + '/fgbio-0.4.0-SNAPSHOT.jar'
 		config_line = "\n".join(["###phasing", "extractHAIRS = " + ExtractHAIRS, "HAPCUT2 = " + Hapcut2, "fgbio = " + fgbio, "", ""])
 		wReseq_config_file.write(config_line)
 		wReseq_config_file.close()
@@ -127,7 +145,7 @@ class create_config:
 		config_dir = os.path.dirname(Reseq_config_file)
 		chrlistfile = os.path.join(config_dir, "chrlist.txt")
 		wchrlistfile = open(chrlistfile, 'w')
-		genomedictfile = dataset_dir + "/genome/genome.dict"
+		genomedictfile = dataset_dir + "/GATK_bundle/Homo_sapiens_assembly38.dict"
 		rgenomedictfile = open(genomedictfile, 'r')
 		for chrinfo in rgenomedictfile:
 			chrinfo = chrinfo.strip()
@@ -137,39 +155,26 @@ class create_config:
 				wchrlistfile.write(chrid)
 		wchrlistfile.close()
 		rgenomedictfile.close()
-
-	def Denovo_config(self, Denovo_config_file, script_dir, dataset_dir):
-		wDenovo_config_file = open(Denovo_config_file, 'w')
-		script_abs_path = os.path.abspath(sys.argv[0])
-
-		config_line = "\n".join(["###denovo assemble", "", ""])
-		wDenovo_config_file.write(config_line)
-
-		wDenovo_config_file.close()
-
 def usage():
 	create_usage = \
 	'''
-	create configuration file for LRTK
+	generate configuration file for LRTK-SEQ
 	Version: 1.0.0
 	Dependents: Python (>=3.0)
-	Last Updated Date: 2017-06-01
-	Contact: meijp@foxmail.com
+	Last Updated Date: 2017-11-14
 
 	Usage: python create_config.py <command> [options]
 
 	Command:
-		Basic       create configuration file for basic processing
-		Reseq       create configuration file for resequencing
-		Denovo      create configuration file for de novo assembly
-		all         create all configuration files
-
-	Options:
-		-o --outputdir, the path of output directory
-		-s --softwarepath, the path of directory where all software were installed
-		-d --datasetpath, dataset directory
-		-b --bed, target region of WES/target sequencing data, or non-N region of the whole genome [chr	strt	bed]
-		-h --help, help info
+		Basic       generate configuration file for pre-processing
+		Reseq       generate configuration file for resequencing
+		all         generate  pre-processing and resequencing configuration files
+	Basic options:
+		-o --outputdir, output directory.
+	Advanced options:
+		-s --softwarepath, software directory [default: ./bin]
+		-d --datasetpath, dataset directory [default: ./dataset]
+		-h --help, print help info
 
 	'''
 	print(create_usage)
@@ -213,11 +218,13 @@ if __name__ == '__main__':
 		if command == "Basic" or command == "all":
 			config_file = os.path.join(outputdir, "Basic.config")
 			C.Basic_config(config_file, SoftwarePathDir, DatasetPathDir)
-			sys.stderr.write("[ %s ] configuration file for quality control has been created: %s \n" % (time.asctime(), config_file))
+			sys.stderr.write("[ %s ] configuration file for `Basic` has been generated: %s \n" % (time.asctime(), config_file))
+
 		if command == "Reseq" or command == "all":
 			config_file = os.path.join(outputdir, "Reseq.config")
 			C.Reseq_config(config_file, SoftwarePathDir, DatasetPathDir)
-			sys.stderr.write("[ %s ] configuration file for resequencing has been created: %s \n" % (time.asctime(), config_file))
+			sys.stderr.write("[ %s ] configuration file for `Reseq` has been generated: %s \n" % (time.asctime(), config_file))
+
 		if command == "Denovo" or command == "all":
 			config_file = os.path.join(outputdir, "Denovo.config")
 			C.Denovo_config(config_file, SoftwarePathDir, DatasetPathDir)

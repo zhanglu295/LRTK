@@ -23,9 +23,6 @@ class baseinfo:
 				path = path.replace("'", "")
 				path = path.replace('"', '')
 
-				if path == "None":
-					path = " "
-
 				self.configdist[name] = path
 #				print (name, path)
 		o_config.close()
@@ -119,23 +116,13 @@ if __name__ == '__main__':
 			usage()
 			sys.exit(-1)
 
-	if ConfigFile == None or Chrlist == None:
-		script_abs_path = os.path.abspath(sys.argv[0])
-		create_config_py = os.path.join(os.path.dirname(script_abs_path), "create_config.py")
-		config_dir = os.path.join(outputdir, "config")
-		if os.path.isdir(config_dir):
-			pass
-		else:
-			os.mkdir(config_dir)
-		tmpshell = os.path.join(config_dir, "cc.sh")
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join(["python", create_config_py, "Reseq -o", config_dir, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
-		subprocess.call(["sh", tmpshell])
-		subprocess.call(["rm", tmpshell])
-		ConfigFile = os.path.join(config_dir, "Reseq.config")
-		Chrlist = os.path.join(config_dir, "chrlist.txt")
+	if ConfigFile == None or os.path.exists(ConfigFile) == False:
+		sys.stderr.write("Configuration file does not exist, you can create it using 'python LRTK-seq.py Config'\n")
+		sys.exit(-1)
+	
+	if Chrlist == None or os.path.exists(Chrlist) == False:
+		Chrlist = os.path.dirname(ConfigFile) + "/chrlist.txt"
+		sys.stderr.write("[ %s ] Warnings: chr list was not provided, and %s would be used instead." % (time.asctime(), Chrlist))
 
 	G = baseinfo()
 	G.get_config(ConfigFile)
@@ -170,30 +157,32 @@ if __name__ == '__main__':
 		os.makedirs(bychrvcfdir)
 	for ch in rChrlist:
 		ch = ch.strip()
-		chrshell = os.path.join(shelldir, ch + ".vcf.sh")
-		chrgvcf = os.path.join(bychrvcfdir, ch + ".gvcf")
-		chrvcf = os.path.join(bychrvcfdir, ch + ".vcf")
-		wchrshell = open(chrshell, 'w')
-		if os.path.isfile(dbsnp):
-			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "-T HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "--dbsnp", dbsnp, "-L", ch, "-o", chrgvcf, "\n"])
-		else:
-			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "-T HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "-L", ch, "-o", chrgvcf, "\n"])
-		wchrshell.write(shell_line)
-		if os.path.isfile(dbsnp):
-			shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "-T GenotypeGVCFs --variant", chrgvcf, "-o", chrvcf, "--dbsnp", dbsnp, GenotypeGVCFs_par, "-L", ch, "\n"])
-		else:
-			shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "-T GenotypeGVCFs --variant", chrgvcf, "-o", chrvcf, GenotypeGVCFs_par, "-L", ch, "\n"])
-		ChrGvcflist.append(chrvcf)
-		wchrshell.write(shell_line)
-		wchrshell.close()
+		if len(str(ch)) <= 5:
+			chrshell = os.path.join(shelldir, ch + ".vcf.sh")
+			logfile = chrshell + ".log"
+			chrgvcf = os.path.join(bychrvcfdir, ch + ".gvcf")
+			chrvcf = os.path.join(bychrvcfdir, ch + ".vcf")
+			wchrshell = open(chrshell, 'w')
+			if os.path.exists(dbsnp):
+				shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "-T HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "--dbsnp", dbsnp, "-L", ch, "-o", chrgvcf, "2>", logfile, "\n"])
+			else:
+				shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "-T HaplotypeCaller -R", ref, "-I", inputbam, "--emitRefConfidence GVCF", HaplotypeCaller_par, "-L", ch, "-o", chrgvcf, "2>", logfile, "\n"])
+			wchrshell.write(shell_line)
+			if os.path.exists(dbsnp):
+				shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "-T GenotypeGVCFs --variant", chrgvcf, "-o", chrvcf, "--dbsnp", dbsnp, GenotypeGVCFs_par, "-L", ch, "2>>", logfile, "\n"])
+			else:
+				shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "-R", ref, "-T GenotypeGVCFs --variant", chrgvcf, "-o", chrvcf, GenotypeGVCFs_par, "-L", ch, "2>>", logfile, "\n"])
+			ChrGvcflist.append(chrvcf)
+			wchrshell.write(shell_line)
+			wchrshell.close()
 
-		Chrshell.append(chrshell)
-		if chrpriority == None:
-			chrpriority = str(ch)
-			AllChrVcf = "--variant:" + ch + " " + chrvcf
-		else:
-			chrpriority = chrpriority + "," + str(ch)
-			AllChrVcf = AllChrVcf + " --variant:" + ch + " " + chrvcf
+			Chrshell.append(chrshell)
+			if chrpriority == None:
+				chrpriority = str(ch)
+				AllChrVcf = "--variant:" + ch + " " + chrvcf
+			else:
+				chrpriority = chrpriority + "," + str(ch)
+				AllChrVcf = AllChrVcf + " --variant:" + ch + " " + chrvcf
 	ShellNum = len(Chrshell)
 	## ParallelNum = 3
 	finishNum = 0
@@ -228,14 +217,19 @@ if __name__ == '__main__':
 		wtmpshell.close()
 		subprocess.call(["sh", tmpshell])
 		sys.stderr.write("Command: %s\n" % shell_line)
-
 	UnphaseVcf = os.path.join(vcfdir, "all.vcf")
 	tmpshell = os.path.join(shelldir, "combine_vcf.sh")
+	logfile = tmpshell + ".log"
 	wtmpshell = open(tmpshell, 'w')
-#AllChrVcf = AllChrVcf.replace("--variant:", "-I")
-	shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "\n"])
+	#AllChrVcf = AllChrVcf.replace("--variant:", "-I")
+	shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "-genotypeMergeOptions PRIORITIZE -priority", chrpriority, "2>", logfile, "\n"])
 	wtmpshell.write(shell_line)
 	wtmpshell.close()
 	subprocess.call(["sh", tmpshell])
 
 	sys.stderr.write("[ %s ] vcf file has been writeen to %s\n\n" % (time.asctime(), UnphaseVcf))
+	if os.path.exists(UnphaseVcf) and os.path.getsize(UnphaseVcf):
+		sys.stderr.write("[ %s ] vcf file has been writeen to %s\n\n" % (time.asctime(), UnphaseVcf))
+	else:
+		sys.stderr.write("[ %s ] ERROR: %s does not exist, error info has been written in %s \n\n" % (time.asctime(), UnphaseVcf, logfile))
+		sys.exit(-1)

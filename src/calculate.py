@@ -6,6 +6,7 @@ import re
 from collections import defaultdict
 import random
 import string
+import pysam
 
 class baseinfo:
 	def __init__(self):
@@ -80,66 +81,87 @@ class CFCR:
 		else:
 			os.mkdir(splitdir)
 
-		sorted_sam = sorted_bam
-		if sorted_bam.endswith("bam"):
-			sorted_sam = sorted_bam.replace('bam', 'sam')
-			tmpshell = os.path.join(splitdir, "bam2sam.sh")
-			wtmpshell = open(tmpshell, 'w')
-			sortshell = tmpshell + ".tmp"
-			wsortshell = open(tmpshell + ".tmp", 'w')
-			tmpheader = splitdir + "/tmp.header"
-			shell_line = " ".join([samtools_path, "view -H", sorted_bam, "| grep coordinate >", tmpheader, "\n"])
-			wsortshell.write(shell_line)
-			wsortshell.close()
-			subprocess.call(["sh", sortshell])
-			if os.path.getsize(tmpheader):
-				sys.stderr.write("%s has been sorted!\n" % sorted_bam)
-			else:
-				sys.stderr.write("%s has not been sorted, and would be sorted before calculating CF/CR!\n" % sorted_bam)
+		tmpshell = os.path.join(splitdir, "check_sort.sh")
+		wtmpshell = open(tmpshell, 'w')
+		tmpheader = splitdir + "/tmp.header"
+		shell_line = " ".join([samtools_path, "view -H", sorted_bam, "| grep coordinate >", tmpheader, "\n"])
+		wtmpshell.write(shell_line)
+		wtmpshell.close()
+		subprocess.call(["sh", tmpshell])
+#		subprocess.call([samtools_path, "view -H", sorted_bam, "| grep coordinate >", tmpheader])
 
-				sv = self.find_samtools_version(samtools_path, splitdir)
-				if sv == 0:
-					shell_line = " ".join([samtools_path, "sort -m 2G", sorted_bam, sorted_bam + ".sorted\n"])
-				else:
-					shell_line = " ".join([samtools_path, "sort -m 2G -o", sorted_bam + ".sorted.bam -T", sorted_bam, sorted_bam, "\n"])
-				wtmpshell.write(shell_line)
-				shell_line = " ".join(["mv", sorted_bam + ".sorted.bam", sorted_bam, "\n"])
-				wtmpshell.write(shell_line)
-			shell_line = " ".join([samtools_path, "view -h", sorted_bam, ">", sorted_sam, "\n"])
+		if os.path.getsize(tmpheader):
+			sys.stderr.write("%s has been sorted!\n" % sorted_bam)
+		else:
+			sys.stderr.write("%s has not been sorted, and would be sorted before calculating CF/CR!\n" % sorted_bam)
+
+			sv = self.find_samtools_version(samtools_path, splitdir)
+			if sv == 0:
+				shell_line = " ".join([samtools_path, "sort -m 2G", sorted_bam, sorted_bam + ".sorted\n"])
+			else:
+				shell_line = " ".join([samtools_path, "sort -m 2G -o", sorted_bam + ".sorted.bam -T", sorted_bam, sorted_bam, "\n"])
 			wtmpshell.write(shell_line)
-			wtmpshell.close()
-			subprocess.call(["sh", tmpshell])
+			shell_line = " ".join(["mv", sorted_bam + ".sorted.bam", sorted_bam, "\n"])
+			wtmpshell.write(shell_line)
+		subprocess.call(["rm", tmpshell])
+
+		wtmpshell = open(tmpshell, 'w')
+		headersam = os.path.join(splitdir, 'header.sam')
+		shell_line = " ".join([samtools_path, "view -H", sorted_bam, ">", headersam, "\n"])
+		wtmpshell.write(shell_line)
+		wtmpshell.close()
+		subprocess.call(["sh", tmpshell])
+
+		rsorted_sam = pysam.AlignmentFile(sorted_bam, 'rb')
+		duplicated_bam = os.path.join(outdir, "duplicated.bam")
+		unmap_bam = os.path.join(outdir, "unmapped.bam")
+		additional_bam = os.path.join(outdir, "additional.bam")
+		wduplicated_bam = pysam.AlignmentFile(duplicated_bam, 'wb', template = rsorted_sam)
+		wunmap_bam = pysam.AlignmentFile(unmap_bam, 'wb', template = rsorted_sam)
+		wadditional_bam = pysam.AlignmentFile(additional_bam, 'wb', template = rsorted_sam)
 
 		chrdict = dict()
 		splitsamlist = list()
-		headersam = os.path.join(splitdir, 'header.sam')
-		outputsam = open(headersam, 'w')
-		rsorted_sam = open(sorted_sam, 'r')
-		while True:
-			saminfo = rsorted_sam.readline()
-			if len(saminfo) == 0:
-				break
-			elif saminfo.startswith('@'):
-				outputsam.write(saminfo)
+		chrsam = os.path.join(splitdir, "chr1.sam")
+
+		outputsam = pysam.AlignmentFile(chrsam, 'w', template = rsorted_sam)
+		for saminfo in rsorted_sam:
+			chr_real_name = "chr1"
+			if saminfo.reference_id >= 0:
+				chr_real_name = rsorted_sam.get_reference_name(saminfo.reference_id)
+			if saminfo.flag > 1000:
+				wduplicated_bam.write(saminfo)	## duplication reads
+			elif chr_real_name == "*":
+				wunmap_bam.write(saminfo)	## unmmpaed reads
+			elif len(chr_real_name) > 5:
+				wadditional_bam.write(saminfo)	## additional chromosomes that not include chr1-22, X, Y, M
 			else:
-				saminfo = saminfo.strip()
-				saminfolist = re.split("\t", saminfo)
-				if saminfolist[2] == '*':
-					pass
-				elif len(chrdict) == 0 or saminfolist[2] not in chrdict:
-					chrdict[saminfolist[2]] = saminfolist[2]
+				if chr_real_name not in chrdict:
+					chrdict[chr_real_name] = chr_real_name
 					outputsam.close()
-					chrsam = os.path.join(splitdir, saminfolist[2] + '.sam')
-					outputsam = open(chrsam, 'w')
+
+					newchr = chr_real_name
+					chrsam = os.path.join(splitdir, str(newchr) + '.sam')
+					outputsam = pysam.AlignmentFile(chrsam, 'w', template = rsorted_sam)
 					splitsamlist.append(chrsam)
-					sys.stderr.write("[ %s ] split sorted sam file, processing %s: %s ...\n" % (time.asctime(), saminfolist[2], chrsam))
+					sys.stderr.write("[ %s ] split sorted sam file, processing %s: %s ...\n" % (time.asctime(), chr_real_name, chrsam))
 					### move the barcode info to the 12th column
-					saminfo = self.modify_saminfo(saminfo)
-					outputsam.write(saminfo)
-				else:
-					saminfo = self.modify_saminfo(saminfo)
-					outputsam.write(saminfo)
+				newinfo = pysam.AlignedSegment()
+				newinfo = saminfo
+				newtags = list()
+				BX_tag = ("BX", "1")
+				newtags.append(BX_tag)
+				for eachtag in newinfo.tags:
+					if eachtag[0] == "BX":
+						newtags[0] = eachtag
+					else:
+						newtags.append(eachtag)
+				newinfo.tags = newtags
+				outputsam.write(newinfo)
 		outputsam.close()
+		wduplicated_bam.close()
+		wunmap_bam.close()
+		wadditional_bam.close()
 		
 		samfilepath = os.path.join(splitdir, "sam.txt")
 		wsamfilepath = open(samfilepath, 'w')
@@ -148,7 +170,7 @@ class CFCR:
 			sys.stderr.write("[ %s ] sort sam file, processing %s ...\n" % (time.asctime(), chrsortedsam))
 			tmpshell = os.path.join(splitdir, "sort.sh")
 			wtmpshell = open(tmpshell, "w")
-			shell_line = " ".join(["sort", "-k12,12 -k4n", chrsam, ">", chrsortedsam, "\n"])
+			shell_line = " ".join(["awk '$1!~/^@/'", chrsam, "|sort", "-k12,12 -k4n", ">", chrsortedsam, "\n"])
 			wtmpshell.write(shell_line)
 			shell_line = " ".join(["rm", chrsam, "\n"])
 			wtmpshell.write(shell_line)
@@ -157,31 +179,8 @@ class CFCR:
 			wsamfilepath.write("\n".join([chrsortedsam, ""]))
 		wsamfilepath.close()
 
-		subprocess.call(["rm", sorted_sam])
-
+#		subprocess.call(["rm", sorted_sam])
 		return(samfilepath, headersam)
-
-	def modify_saminfo(self, orisaminfo):
-		saminfolist = re.split("\t", orisaminfo)
-		bcindex = 1
-		for n in range(len(saminfolist)):
-			if saminfolist[n].startswith("BX:Z"):
-				bcindex = n
-		if bcindex == 11 or bcindex == 1:
-			saminfo = "\t".join(saminfolist)
-		else:
-			newsaminfolist = saminfolist[0:11]
-			newsaminfolist.append(saminfolist[bcindex])
-			for n in range(11, bcindex):
-				newsaminfolist.append(saminfolist[n])
-			if bcindex == (len(saminfolist) - 1):
-				pass
-			else:
-				for n in range(bcindex+1, len(saminfolist)):
-					newsaminfolist.append(saminfolist[n])
-			saminfo = "\t".join(newsaminfolist)
-		saminfo = saminfo + "\n"
-		return(saminfo)
 
 	def calculate(self, sorted_by_barcode_sam_list, target_size, outdir, sorted_bam, samtools_path, molecule_length, headersamfile):
 		samfile_list = open(sorted_by_barcode_sam_list, 'r')
@@ -217,11 +216,11 @@ class CFCR:
 
 		molecule_really_covered_file = os.path.join(statistics_report_dir, "each_molecule_coverage.txt")
 		wmolecule_really_covered_file = open(molecule_really_covered_file, "w")
-		wmolecule_really_covered_file.write("molecule_id\tmolecule_length\tcovered\tcoverage\n")
+		wmolecule_really_covered_file.write("molecule_id\tmolecule_length\tcovered_bases\tCR\n")
 
 		molecule_coverage_distribution_file = os.path.join(statistics_report_dir, "molecule_coverage_distribution.txt")
 		wmolecule_coverage_distribution_file = open(molecule_coverage_distribution_file, "w")
-		wmolecule_coverage_distribution_file.write("coverage\tproportion(%)\n")
+		wmolecule_coverage_distribution_file.write("Coverage\tProportion(%)\n")
 
 		filter_molecule_bam_list = list()
 		failed_molecule_bam_list = list()
@@ -518,7 +517,7 @@ class CFCR:
 
 		cfcr_stat_file = os.path.join(statistics_report_dir, "CFCR.stat")
 		wcfcr_stat_file = open(cfcr_stat_file, 'w')
-		stat_line = "Item" + "\t" + "CF/CR length" + "\t" + "genome_size" + "\t" + "CF/CR depth\n"
+		stat_line = "Item" + "\t" + "Total_length_Molecule(CF)/Short_Reads(CR)" + "\t" + "genome_size(CR)/total_length_Molecule(CF)" + "\t" + "CF/CR\n"
 		wcfcr_stat_file.write(stat_line)
 		target_size = int(target_size)
 		CF_depth = all_CF / float(target_size)
@@ -531,8 +530,9 @@ class CFCR:
 		wcfcr_stat_file.close()
 
 		molecule_length_distribution_file = os.path.join(statistics_report_dir, "molecule_length_distribution.txt")
+
 		wmolecule_length_distribution_file = open(molecule_length_distribution_file, 'w')
-		wmolecule_length_distribution_file.write("molecule_length\tamount\n")
+		wmolecule_length_distribution_file.write("Molecule_length\tNumber\n")
 		for molecule_length_id in sorted(molecule_length_distribution.keys()):
 			info = str(molecule_length_id) + "\t" + str(molecule_length_distribution[molecule_length_id]) + "\n"
 			wmolecule_length_distribution_file.write(info)
@@ -549,6 +549,7 @@ class CFCR:
 		rmarked_molecule = gzip.open(marked_molecule, 'rb')
 		merge_molecule_file = os.path.join(statistics_report_dir, "fragment_info.csv")
 		wmerge_molecule_file = open(merge_molecule_file, 'w')
+		wmerge_molecule_file.write('Molecule_id'+','+'Baecode_seq'+','+'Chr'+','+'Start_pos'+','+'End_pos'+','+'Molecule_len'+','+'# of reads'+','+'Total_length_reads'+','+'Depth'+'\n')
 		molecule_id = 0
 		merge_molecule_info_list = list()
 		for mm in range(9):
@@ -592,23 +593,74 @@ class CFCR:
 
 		return(statistics_report_dir)
 
+	def calculate2(self, csvfile, statistics_report_dir):
+		NFP_summary = os.path.join(statistics_report_dir, "NFP_summary.xls")
+		MuFL_summary = os.path.join(statistics_report_dir, "Unweight_MuFL.xls")
+		W_MuFL_summary = os.path.join(statistics_report_dir, "Weight_MuFL.xls")
+		rcsvfile = open(csvfile, 'r')
+		wNFP_summary = open(NFP_summary, 'w')
+		wMuFL_summary = open(MuFL_summary, 'w')
+		wW_MuFL_summary = open(W_MuFL_summary, 'w')
+		NFP_dict = dict()
+		molecule_len_dict = dict()
+		for csvinfo in rcsvfile:
+			csvinfolist = re.split(",", csvinfo.strip())
+			if csvinfolist[0] != "Molecule_id":
+				if csvinfolist[1] not in NFP_dict:
+					NFP_dict[csvinfolist[1]] = 1
+				else:
+					NFP_dict[csvinfolist[1]] += 1
+
+				mst = int(int(csvinfolist[5]) / 1000)
+				if mst not in molecule_len_dict:
+					molecule_len_dict[mst] = 1
+				else:
+					molecule_len_dict[mst] +=1
+		rcsvfile.close()
+
+		sorted_NFP_dict = sorted(NFP_dict.items(), key=lambda NFP_dict:NFP_dict[1], reverse = True)
+		for sortedNFP in sorted_NFP_dict:
+			info = str(sortedNFP[0]) + "\t" + str(sortedNFP[1]) + "\n"
+			wNFP_summary.write(info)
+		wNFP_summary.close()
+
+#		sorted_molecule_len_dict = sorted(molecule_len_dict.items(), key=lambda molecule_len_dict:molecule_len_dict[0], reverse = False)
+		start = 0
+		end = 100
+		if 0 not in molecule_len_dict:
+			start = 1
+			end = 101
+		for ml in range(start,end):
+			if ml not in molecule_len_dict:
+				molecule_len_dict[ml] = 0
+#		for sortedmoleculelen in sorted_molecule_len_dict:
+#			info = str(sortedmoleculelen[0]) + "\t" + str(sortedmoleculelen[1]) + "\n"
+			info = str(ml) + "\t" + str(molecule_len_dict[ml]) + "\n"
+			weighted_info = str(ml) + "\t" + str(molecule_len_dict[ml] / 100) + "\n"
+			wMuFL_summary.write(info)
+			wW_MuFL_summary.write(weighted_info)
+		wMuFL_summary.close()
+		wW_MuFL_summary.close()
+		
+		return(statistics_report_dir)
+
 def usage():
 	calculation_usage = \
 	'''
-	calculate CF and CR
+	calculate linked read statistics
 	Version: 1.0.0
 	Dependents: Python (>=3.0), SAMtools
-	Last Updated Date: 2017-06-01
-	Contact: meijp@foxmail.com
+	Last Updated Date: 2017-11-15
 
-	Usage: python calculate.py <options>
+	Usage: python calculate.py [options]
 
-	Options:
-		-i --input, path of input bam file
-		-o --outputdir, the path of output directory
-		-c --config, the path of configuration file [default: outdir/config/Basic.config]
+	Basic Options:
+		-i --input, path of input bam
+		-o --outputdir, the path of output
+		-c --config, the path of configuration file [default: ./config/Basic.config]
+		-h --help, print help info
+	Advanced Options:
 		-m --minlen, minimum molecule length [default: 500bp]
-		-h --help, help info
 
 	'''
 	print(calculation_usage)
@@ -636,22 +688,14 @@ if __name__ == '__main__':
 			usage()
 			sys.exit(-1)
 
-	if ConfigFile == None:
-		script_abs_path = os.path.abspath(sys.argv[0])
-		create_config_py = os.path.join(os.path.dirname(script_abs_path), "create_config.py")
-		config_dir = os.path.join(outputdir, "config")
-		if os.path.isdir(config_dir):
-			pass
-		else:
-			os.mkdir(config_dir)
-		tmpshell = os.path.join(config_dir, "cc.sh")
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join(["python", create_config_py, "Basic -o", config_dir, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
-		subprocess.call(["sh", tmpshell])
-		subprocess.call(["rm", tmpshell])
-		ConfigFile = os.path.join(config_dir, "Basic.config")
+	if ConfigFile == None or os.path.exists(ConfigFile) == False:
+		sys.stderr.write("configuration file has not been provided or does not exist, Please create it using 'python LRTK-SEQ.py Config'\n")
+		sys.exit(-1)
+	
+	PLOT_script = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "plot.py")
+	if os.path.exists(PLOT_script) == False:
+		sys.stderr.write("%s does not exist, the software package might not been downloaded perfectly!" % PLOT_script)
+		sys.exit(-1)
 
 	G = baseinfo()
 	G.get_config(ConfigFile)
@@ -661,10 +705,16 @@ if __name__ == '__main__':
 
 	C = CFCR()
 	samdir = os.path.dirname(inputbam)
-	sys.stderr.write("[ %s ] split sam file by chr, sort sam file by barcode ... \n" % time.asctime())
+	sys.stderr.write("[ %s ] split sam file by chromosome, sort sam file by barcode ... \n" % time.asctime())
 	(Samfilepath, HeaderSamFile) = C.split_and_sort_sam(inputbam, samtools, barcode_index, samdir)
 	sys.stderr.write("[ %s ] splited and sorted sam file list: %s \n\n" % (time.asctime(), Samfilepath))
 
-	sys.stderr.write("[ %s ] calculating CF/CR ... \n" % time.asctime())
+	sys.stderr.write("[ %s ] calculating CF, CR, NFP and MuFL ... \n" % time.asctime())
+	report_dir = samdir + "/statistics"
 	report_dir = C.calculate(Samfilepath, genomesize, samdir, inputbam, samtools, Molecule_length, HeaderSamFile)
-	sys.stderr.write("[ %s ] files of CF/CR, molecule distribution, molecule coverage and other infos have been placed in directory: %s \n" % (time.asctime(), report_dir))
+	sys.stderr.write("[ %s ] statistical results have been generated in directory: %s \n" % (time.asctime(), report_dir))
+
+	stat_csv = report_dir + "/fragment_info.csv"
+	report_dir = C.calculate2(stat_csv, report_dir)
+	subprocess.call(["python", PLOT_script, stat_csv, report_dir])
+	sys.stderr.write("[ %s ] figures have been plotted in %s !\n\n" % (time.asctime(), report_dir))

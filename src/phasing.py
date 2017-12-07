@@ -63,17 +63,16 @@ def usage():
 	phasing
 	Version: 1.0.0
 	Dependents: Python (>=3.0), HapCut, Fgbio
-	Last Updated date: 2017-06-01
-	Contact: meijp@foxmail.com
+	Last Updated date: 2017-11-14
 
-	Usage: python phasing.py <options>
+	Usage: python phasing.py [options]
 
-	Options:
-		-i --input, bam file
-		-v --vcf, unphased vcf, both compressed or uncompressed vcf are allowed
-		-o --outputdir, the path of output directory
-		-c --config, the path of configuration file [default: outdir/config/Reseq.config]
-		-h --help, help info
+	Basic options:
+		-i --input, BAM file
+		-v --vcf, unphased vcf, either compressed or uncompressed vcf 
+		-o --outputdir, the path of output
+		-c --config, the path of configuration file [default: ./config/Reseq.config]
+		-h --help, print help info
 
 	'''
 	print(phasing_usage)
@@ -102,7 +101,7 @@ if __name__ == '__main__':
 			usage()
 			sys.exit(-1)
 		
-	if ConfigFile == None:
+	if ConfigFile == None or os.path.exists(ConfigFile) == False:
 		sys.stderr.write("configuration file (-c) does not exist! Please generate it using 'python LRTK_simple.py Config'\n")
 
 	G = baseinfo()
@@ -134,12 +133,15 @@ if __name__ == '__main__':
 
 	tmpdir = outputdir
 	tmpshell = os.path.join(tmpdir, "phase.sh")
+	logfile = tmpshell + ".log"
 	wtmpshell = open(tmpshell, 'w')
-	shell_line = " ".join([Path_extractHAIRS, "--bam", Markedbam, "--VCF", UnphaseVcf, "--out", fragment_file, "\n"])
+	shell_line = "set -e\n"
 	wtmpshell.write(shell_line)
-	shell_line = " ".join([Path_HAPCUT2, "--fragments", fragment_file, "--vcf", UnphaseVcf, "--output", haplotype_output_file, "\n"])
+	shell_line = " ".join([Path_extractHAIRS, "--bam", Markedbam, "--VCF", UnphaseVcf, "--out", fragment_file, "2>", logfile, "\n"])
 	wtmpshell.write(shell_line)
-	shell_line = " ".join([javapath, "-jar", PathSNAPSHOT, "HapCutToVcf -v", UnphaseVcf, "-i", haplotype_output_file, "-o", PhaseVcf, "\n"])
+	shell_line = " ".join([Path_HAPCUT2, "--fragments", fragment_file, "--vcf", UnphaseVcf, "--output", haplotype_output_file, "2>>", logfile, "\n"])
+	wtmpshell.write(shell_line)
+	shell_line = " ".join([javapath, "-jar", PathSNAPSHOT, "HapCutToVcf -v", UnphaseVcf, "-i", haplotype_output_file, "-o", PhaseVcf, "2>>", logfile, "\n"])
 	wtmpshell.write(shell_line)
 	wtmpshell.close()
 
@@ -154,8 +156,10 @@ if __name__ == '__main__':
 	rfragment.close()
 
 	PhasedBam = Markedbam.replace("bam", "addPhaseInfo.bam")
+	barcode_phase_file = PhasedBam.replace("addPhaseInfo.bam", "addPhaseInfo.barcode.csv")
 	rbam = pysam.AlignmentFile(Markedbam, 'rb')
 	wbam = pysam.AlignmentFile(PhasedBam, 'wb', template = rbam)
+	wbarcode_phase_file = open(barcode_phase_file, 'w')
 	for read in rbam:
 		newinfo = pysam.AlignedSegment()
 		newinfo = read
@@ -166,9 +170,16 @@ if __name__ == '__main__':
 		addtag = ("HP", 0)
 		if newinfo.query_name in readdict:
 			addtag = ("HP", readdict[newinfo.query_name])
+			phased_id = readdict[newinfo.query_name]
+			for eachtag in newinfo.tags:
+				if eachtag[0] == "BX":
+					barcode_info = (eachtag[1]).replace("-1", "")
+					barcode_phase_info = barcode_info + "\t" + str(phased_id) + "\t" + newinfo.query_name + "\n"
+					wbarcode_phase_file.write(barcode_phase_info)
 		newtags.append(addtag)
 		newinfo.tags = newtags
 		wbam.write(newinfo)
 	rbam.close()
+	wbarcode_phase_file.close()
 	wbam.close()
 	print("[ %s ] phasing info has been supplemented: %s \n" % (time.asctime(), PhasedBam))
