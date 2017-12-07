@@ -228,6 +228,9 @@ if __name__ == '__main__':
 =======
 #AllChrVcf = AllChrVcf.replace("--variant:", "-I")
 	shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "-genotypeMergeOptions PRIORITIZE -priority", chrpriority, "\n"])
+<<<<<<< HEAD
+>>>>>>> 51045df414c9c5025bf0a826208fe5782d5069d6
+=======
 >>>>>>> 51045df414c9c5025bf0a826208fe5782d5069d6
 	wtmpshell.write(shell_line)
 	wtmpshell.close()
