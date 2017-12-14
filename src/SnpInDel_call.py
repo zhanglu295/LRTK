@@ -189,7 +189,6 @@ if __name__ == '__main__':
 	pn = 0
 	ts = 0
 	shell_line = None
-
 	while finishNum < ShellNum:
 		if pn < ParallelNum:
 			if pn == 0:
@@ -222,16 +221,8 @@ if __name__ == '__main__':
 	tmpshell = os.path.join(shelldir, "combine_vcf.sh")
 	logfile = tmpshell + ".log"
 	wtmpshell = open(tmpshell, 'w')
-<<<<<<< HEAD
 	#AllChrVcf = AllChrVcf.replace("--variant:", "-I")
 	shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "-genotypeMergeOptions PRIORITIZE -priority", chrpriority, "2>", logfile, "\n"])
-=======
-#AllChrVcf = AllChrVcf.replace("--variant:", "-I")
-	shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "-T CombineVariants -R", ref, AllChrVcf, "-o", UnphaseVcf, "-genotypeMergeOptions PRIORITIZE -priority", chrpriority, "\n"])
-<<<<<<< HEAD
->>>>>>> 51045df414c9c5025bf0a826208fe5782d5069d6
-=======
->>>>>>> 51045df414c9c5025bf0a826208fe5782d5069d6
 	wtmpshell.write(shell_line)
 	wtmpshell.close()
 	subprocess.call(["sh", tmpshell])
