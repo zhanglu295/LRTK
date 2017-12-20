@@ -529,6 +529,8 @@ if __name__ == '__main__':
 				b = b[0:(len(b)-6)]
 			elif b[(len(b)-3):] == ".fq":
 				b = b[0:(len(b)-3)]
+			if b.endswith("_1"):
+				b = b[0:(len(b)-2)]
 			FqPathBasename = b
 
 			clean_FQ_output_dir = OutputDir + "/" + SampleId + "/" + LibraryId + "/" + FqPathBasename
