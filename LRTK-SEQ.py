@@ -513,7 +513,7 @@ if __name__ == '__main__':
 		ALNshell = tmpshelldir + "/" + randomstring + ".sh"
 		wALNshell = open(ALNshell, 'w')
 		for fqinfo in rInputFqList:
-			InputFqListInfolist = re.split("\t", InputFqListInfo.strip())
+			InputFqListInfolist = re.split("\t", fqinfo.strip())
 #			fqinfo = fqinfo.strip()
 #			(SampleId, LibraryId, FqPath) = re.split("\t", fqinfo)
 			SampleId = InputFqListInfolist[0]
