@@ -96,13 +96,13 @@ def LRTK_usage(_Command1_, _Command2_ = "0"):
 	python LRTK-SEQ.py Basic ALN [options]
 
 	Basic options:
-	-i --input, input file for fastq information (Three columns:1.Sample ID; 2.Library ID; 3. Path to the fastqs)
+	-i --input, input file for fastq information (3 or 4 columns:1.Sample ID; 2.Library ID; 3. Path to the combined fastq or fastq 1; [4. Path to the fastq 2])
 	-o --outputdir, the path to output
 	-c --config, configuration file [default: ./config/Basic.config]
 
 	Advanced options:
 	-p --parallel, the number CPUs can be used in parallel [default: 1] 
-	-N --noBX, generate additional fastqs without barcode tags [default: yes]
+	-z --splitsize, the amount of reads of splited fastq, reads num = split_size / 8 [default: 15000000 lines, 1875000 read-pairs, compressed file size: ~300M]
 
 	'''
 	subhelpinfo["ALN"] = ALN_options
@@ -436,12 +436,13 @@ if __name__ == '__main__':
 	runALN = 0
 	addBX = 1
 	FqBamList = None
+	split_size = 15000000
 	if sys.argv[1] == "Basicall":
 		runALN = 1
 	elif sys.argv[1] == "Basic" and sys.argv[2] == "ALN":
 		runALN = 2
 	if runALN > 0:
-		opts, args = getopt.gnu_getopt(sys.argv[runALN:], 'i:o:p:c:N', ['input', 'outputdir', 'parallel', 'config', 'noBX'])
+		opts, args = getopt.gnu_getopt(sys.argv[runALN:], 'i:o:p:c:z:', ['input', 'outputdir', 'parallel', 'config', 'splitsize'])
 		for o, a in opts:
 			if o == '-i' or o == '--input':
 				InputFqList = os.path.abspath(a)
@@ -451,8 +452,8 @@ if __name__ == '__main__':
 				ParalleleNum = a
 			if o == '-c' or o == '--config':
 				Basic_config = os.path.abspath(a)
-			if o == '-N' or o == '--noBX':
-				addBX = 0
+			if o == '-z' or o == '--splitsize':
+				split_size = a
 
 		check_info(InputFqList, "file")
 		check_info(OutputDir, "dir")
@@ -479,6 +480,26 @@ if __name__ == '__main__':
 				sys.stderr.write("configuration file was not provided or does not exist, Please create it using 'python LRTK-SEQ.py Config'\n")
 				sys.exit(-1)
 
+		barcode_prefix_dict = {0:"AAAA", 1:"AAAC", 2:"AAAG", 3:"AAAT", 4:"AACA", 5:"AACC", 6:"AACG", 7:"AACT", 8:"AAGA", 9:"AAGC"}
+		rInputFqList = open(InputFqList, 'r')
+		SampleId_dict = dict()
+		SampleId_LibraryId_dict = dict()
+		for InputFqListInfo in rInputFqList:
+			InputFqListInfolist = re.split("\t", InputFqListInfo.strip())
+			SampleId = InputFqListInfolist[0]
+			LibraryId = InputFqListInfolist[1]
+#			(SampleId, LibraryId, FqPath) = re.split("\t", InputFqListInfo.strip())
+			if SampleId not in SampleId_dict:
+				SampleId_dict[SampleId] = 0
+				SampleId_LibraryId = SampleId + "_" + LibraryId
+				SampleId_LibraryId_dict[SampleId_LibraryId] = SampleId_dict[SampleId]
+			else:
+				SampleId_LibraryId = SampleId + "_" + LibraryId
+				if SampleId_LibraryId not in SampleId_LibraryId_dict:
+					SampleId_dict[SampleId] += 1
+					SampleId_LibraryId_dict[SampleId_LibraryId] = SampleId_dict[SampleId]
+		rInputFqList.close()
+
 		rInputFqList = open(InputFqList, 'r')
 		Result_List_Dir = OutputDir + "/Result_list"
 		check_info(Result_List_Dir, 'dir')
@@ -492,8 +513,12 @@ if __name__ == '__main__':
 		ALNshell = tmpshelldir + "/" + randomstring + ".sh"
 		wALNshell = open(ALNshell, 'w')
 		for fqinfo in rInputFqList:
-			fqinfo = fqinfo.strip()
-			(SampleId, LibraryId, FqPath) = re.split("\t", fqinfo)
+			InputFqListInfolist = re.split("\t", InputFqListInfo.strip())
+#			fqinfo = fqinfo.strip()
+#			(SampleId, LibraryId, FqPath) = re.split("\t", fqinfo)
+			SampleId = InputFqListInfolist[0]
+			LibraryId = InputFqListInfolist[1]
+			FqPath = InputFqListInfolist[2]
 			FqPathBasename = os.path.basename(FqPath)
 			b = str(FqPathBasename)
 			if b[(len(b)-9):] == ".fastq.gz":
@@ -517,17 +542,26 @@ if __name__ == '__main__':
 			wFQshell = open(FQshell, 'w')
 			RGinfo = "'@RG\\tID:" + LibraryId + "\\tPL:illumina\\tPU:" + FqPathBasename + "\\tLB:" + LibraryId + "\\tSM:" + SampleId + "'"
 
-			if addBX == 0:
-				shell_line = " ".join(["python", ALN_script, "-i", FqPath, "-o", clean_FQ_output_dir, "-c", Basic_config, "-r", RGinfo, "-N", "\n"])
+			if SampleId_dict[SampleId] > 0:
+				SampleId_LibraryId = SampleId + "_" + LibraryId
+				barcode_prefix = barcode_prefix_dict[SampleId_LibraryId_dict[SampleId_LibraryId]]
+				print("[ %s ] Warnings: %s has more than one libraries, original barcode of library '%s' would be replaced, and the prefix of new barcode would be '%s'\n" % (time.asctime(), SampleId, LibraryId, barcode_prefix))
+				if len(InputFqListInfolist) > 3 and os.path.exists(InputFqListInfolist[3]):
+					shell_line = " ".join(["python", ALN_script, "-i", FqPath, "-2", InputFqListInfolist[3], "-o", clean_FQ_output_dir, "-c", Basic_config, "-r", RGinfo, "-z",split_size, "-b", barcode_prefix, "\n"])
+				else:
+					shell_line = " ".join(["python", ALN_script, "-i", FqPath, "-o", clean_FQ_output_dir, "-c", Basic_config, "-r", RGinfo, "-z", split_size, "-b", barcode_prefix, "\n"])
 			else:
-				shell_line = " ".join(["python", ALN_script, "-i", FqPath, "-o", clean_FQ_output_dir, "-c", Basic_config, "-r", RGinfo, "\n"])
+				if len(InputFqListInfolist) > 3 and os.path.exists(InputFqListInfolist[3]):
+					shell_line = " ".join(["python", ALN_script, "-i", FqPath, "-2", InputFqListInfolist[3], "-o", clean_FQ_output_dir, "-c", Basic_config, "-r", RGinfo, "-z",split_size, "\n"])
+				else:
+					shell_line = " ".join(["python", ALN_script, "-i", FqPath, "-o", clean_FQ_output_dir, "-c", Basic_config, "-r", RGinfo, "-z", split_size, "\n"])
 			wFQshell.write(shell_line)
 			wFQshell.close()
 			bam = clean_FQ_output_dir + "/" + FqPathBasename + ".sorted.bam"
 			baminfo = "\t".join([SampleId, LibraryId, bam]) + "\n"
 			wFqBamList.write(baminfo)
 
-			BX_fq_path = clean_FQ_output_dir + "/" + FqPathBasename + ".BX.fq.gz"
+			BX_fq_path = clean_FQ_output_dir + "/" + FqPathBasename + ".BX.modified.fq.gz"
 			fq_Summary = clean_FQ_output_dir + "/" + FqPathBasename + ".fq_statistics.txt"
 			fq_failed = clean_FQ_output_dir + "/" + FqPathBasename + ".failed.fq.gz"
 			FastQC_result_path = clean_FQ_output_dir + "/fastqc"
