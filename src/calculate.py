@@ -594,10 +594,11 @@ class CFCR:
 		return(statistics_report_dir)
 
 	def calculate2(self, csvfile, statistics_report_dir):
+		CFCR_stat = os.path.join(statistics_report_dir, "CFCR.stat")
 		NFP_summary = os.path.join(statistics_report_dir, "NFP_summary.xls")
 		MuFL_summary = os.path.join(statistics_report_dir, "Unweight_MuFL.xls")
-		W_MuFL_summary = os.path.join(statistics_report_dir, "Weight_MuFL.xls")
 		rcsvfile = open(csvfile, 'r')
+		wCFCR_stat = open(CFCR_stat, 'a')
 		wNFP_summary = open(NFP_summary, 'w')
 		wMuFL_summary = open(MuFL_summary, 'w')
 		wW_MuFL_summary = open(W_MuFL_summary, 'w')
@@ -618,29 +619,41 @@ class CFCR:
 					molecule_len_dict[mst] +=1
 		rcsvfile.close()
 
+		molecule_count = 0
+		barcode_count = 0
 		sorted_NFP_dict = sorted(NFP_dict.items(), key=lambda NFP_dict:NFP_dict[1], reverse = True)
 		for sortedNFP in sorted_NFP_dict:
 			info = str(sortedNFP[0]) + "\t" + str(sortedNFP[1]) + "\n"
 			wNFP_summary.write(info)
+			barcode_count += 1
+			molecule_count += int(sortedNFP[1])
 		wNFP_summary.close()
 
-#		sorted_molecule_len_dict = sorted(molecule_len_dict.items(), key=lambda molecule_len_dict:molecule_len_dict[0], reverse = False)
-		start = 0
-		end = 100
-		if 0 not in molecule_len_dict:
-			start = 1
-			end = 101
-		for ml in range(start,end):
-			if ml not in molecule_len_dict:
-				molecule_len_dict[ml] = 0
-#		for sortedmoleculelen in sorted_molecule_len_dict:
-#			info = str(sortedmoleculelen[0]) + "\t" + str(sortedmoleculelen[1]) + "\n"
-			info = str(ml) + "\t" + str(molecule_len_dict[ml]) + "\n"
-			weighted_info = str(ml) + "\t" + str(molecule_len_dict[ml] / 100) + "\n"
+		barcode_average_molecule = round(1.0 * molecule_count / barcode_count, 2)
+		CFCR_stat_info = "\nNFP:\t" + str(barcode_average_molecule) + "\n"
+		wCFCR_stat.write(CFCR_stat_info)
+
+		total_molecule_length = 0
+		sorted_molecule_len_dict = sorted(molecule_len_dict.items(), key=lambda molecule_len_dict:molecule_len_dict[0], reverse = False)
+		for sortedmoleculelen in sorted_molecule_len_dict:
+			info = str(sortedmoleculelen[0]) + "\t" + str(sortedmoleculelen[1]) + "\n"
+			total_molecule_length += int(sortedmoleculelen[0]) * int(sortedmoleculelen[1])
 			wMuFL_summary.write(info)
-			wW_MuFL_summary.write(weighted_info)
 		wMuFL_summary.close()
 		wW_MuFL_summary.close()
+
+		molecule_length_N50 = 0
+		for sortedmoleculelen in sorted_molecule_len_dict:
+			if molecule_length_N50 != 1:
+				for e in range(0, int(sortedmoleculelen[1])):
+					r1 = molecule_length_N50 / total_molecule_length
+					r2 = (molecule_length_N50 + int(sortedmoleculelen[0])) / total_molecule_length
+					molecule_length_N50 += int(sortedmoleculelen[0])
+					if r1 < 0.5 and r2 >= 0.5:
+						CFCR_stat_info = "Weighted MuFL:\t" + str(sortedmoleculelen[0]) + "\n"
+						wCFCR_stat.write(CFCR_stat_info)
+						molecule_length_N50 = 1
+		wCFCR_stat.close()
 		
 		return(statistics_report_dir)
 

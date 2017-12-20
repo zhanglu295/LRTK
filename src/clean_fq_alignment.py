@@ -5,6 +5,7 @@ import subprocess
 import re
 import multiprocessing
 import random, string
+import pysam
 
 ### generate clean fastq files and barcode error correction
 
@@ -72,6 +73,26 @@ class baseinfo:
 		abs_path = self.get_path('fastqc')
 		return abs_path
 
+def find_samtools_version(self, samtools_path, outdir = './'):
+	randomstring = ''.join(random.sample(string.ascii_letters + string.digits, 8))
+	tmpshell = outdir + "/" + randomstring + ".sh"
+	tmplog = outdir + "/" + randomstring + ".log"
+	wtmpshell = open(tmpshell, 'w')
+	shell_line = " ".join([samtools_path, "2>", tmplog, "\n"])
+	wtmpshell.write(shell_line)
+	wtmpshell.close()
+	subprocess.call(["sh", tmpshell])
+
+	sv = 0
+	rlog = open(tmplog, 'r')
+	for log in rlog:
+		if re.search("Version", log):
+			loginfo = re.split('\s', log)
+			sv = (re.split('\.', loginfo[1]))[0]
+	rlog.close()
+	subprocess.call(["rm", tmpshell, tmplog])
+	return(int(sv))
+
 class sequence_quality:
 	def countfq(self, quality_info, basic_quality):
 		q20 = 0
@@ -94,7 +115,7 @@ class sequence_quality:
 		return QUALITY
 
 class extract_barcode:
-	def revise(self, rawfq, outdir, maxsize, _split_done):
+	def revise(self, rawfq, outdir, maxsize, _split_done, rawfq2 = 0):
 		(rawfq_path, rawfq_name) = os.path.split(rawfq)
 		b = str(rawfq_name)
 		if b[(len(b)-9):] == ".fastq.gz":
@@ -111,8 +132,12 @@ class extract_barcode:
 
 		if rawfq.endswith('gz'):
 			o_rawfq = gzip.open(rawfq, 'rb')
+			if rawfq2 != 0:
+				o_rawfq2 = gzip.open(rawfq2, 'rb')
 		else:
 			o_rawfq = open(rawfq, 'r')
+			if rawfq2 != 0:
+				o_rawfq2 = open(rawfq2, 'r')
 
 		OutFileList = os.path.join(outdir, "split_fq_barcode.txt")
 		revise_sign_file = OutFileList + ".sign"
@@ -135,10 +160,16 @@ class extract_barcode:
 			rawfq_str1 = o_rawfq.readline()
 			rawfq_qua1 = o_rawfq.readline()
 
-			rawfq_id2 = o_rawfq.readline()
-			rawfq_seq2 = o_rawfq.readline()
-			rawfq_str2 = o_rawfq.readline()
-			rawfq_qua2 = o_rawfq.readline()
+			if rawfq2 == 0:
+				rawfq_id2 = o_rawfq.readline()
+				rawfq_seq2 = o_rawfq.readline()
+				rawfq_str2 = o_rawfq.readline()
+				rawfq_qua2 = o_rawfq.readline()
+			else:
+				rawfq_id2 = o_rawfq2.readline()
+				rawfq_seq2 = o_rawfq2.readline()
+				rawfq_str2 = o_rawfq2.readline()
+				rawfq_qua2 = o_rawfq2.readline()
 
 			SplitSize += 8
 
@@ -188,7 +219,7 @@ class extract_barcode:
 		return(fq_prefix_name, OutFileList)
 
 class modify_barcode:
-	def replace_barcode(self, rawfq, barcode, barcode_sam, bwa_path, bwa_parameter, barcode_ref_prefix, new_fq_prefix, add):
+	def replace_barcode(self, rawfq, barcode, barcode_sam, bwa_path, bwa_parameter, barcode_ref_prefix, new_fq_prefix, barcode_sequence, samtools_path):
 		outdir = os.path.dirname(barcode_sam)
 		shelldir = outdir + "/shell"
 		check_info(shelldir, "dir")
@@ -196,18 +227,19 @@ class modify_barcode:
 		shell = shelldir + "/" + tmpprefix + ".barcode.align.sh"
 		logfile = shell + ".log"
 #		shell = os.path.join(shelldir, "barcode.align.sh")
-		oshell = open(shell, 'w')
-		sai = barcode_sam + '.sai'
-		shell_line = " ".join([bwa_path, 'aln', barcode_ref_prefix, barcode, '-f', sai, bwa_parameter, "2>", logfile, "\n"])
-		oshell.write(shell_line)
-		shell_line = " ".join([bwa_path, 'samse', barcode_ref_prefix, sai, barcode, '-f', barcode_sam + " 2>>", logfile, "\nrm", sai, "\n"])
-		oshell.write(shell_line)
-		shell_line = " ".join(["grep -v '^@'", barcode_sam, ">", barcode_sam + ".noheader\n", "mv", barcode_sam + ".noheader", barcode_sam, "\n"])
-		oshell.write(shell_line)
-		oshell.close()
-		print("[ %s ] processing %s\n" % (time.asctime(), shell))
-		subprocess.call(["sh", shell])
-		print("[ %s ] %s finished!\n" % (time.asctime(), shell))
+		if os.path.exists(barcode_sam) == False or os.path.getsize(barcode_sam) == 0:
+			oshell = open(shell, 'w')
+			sai = barcode_sam + '.sai'
+			shell_line = " ".join([bwa_path, 'aln', barcode_ref_prefix, barcode, '-f', sai, bwa_parameter, "2>", logfile, "\n"])
+			oshell.write(shell_line)
+			shell_line = " ".join([bwa_path, 'samse', barcode_ref_prefix, sai, barcode, '-f', barcode_sam + " 2>>", logfile, "\nrm", sai, "\n"])
+			oshell.write(shell_line)
+			shell_line = " ".join(["grep -v '^@'", barcode_sam, ">", barcode_sam + ".noheader\n", "mv", barcode_sam + ".noheader", barcode_sam, "\n"])
+			oshell.write(shell_line)
+			oshell.close()
+			print("[ %s ] processing %s\n" % (time.asctime(), shell))
+			subprocess.call(["sh", shell])
+			print("[ %s ] %s finished!\n" % (time.asctime(), shell))
 
 		if os.path.exists(barcode_sam) and os.path.getsize(barcode_sam):
 			pass
@@ -217,16 +249,19 @@ class modify_barcode:
 
 		print("\n[ %s ] modify barcode info of %s\n" % (time.asctime(), rawfq))
 		samfile = open(barcode_sam, "r")
-		newfqfile1 = new_fq_prefix + "_1.fq.gz"
-		newfqfile2 = new_fq_prefix + "_2.fq.gz"
 
 		original_barcode_count = 0
 		mapped_barcode_count = 0
 		corrected_barcode_count = 0
 
 		BXfq = new_fq_prefix + ".BX.fq.gz"
-		if add == 1:
-			wBXfq = gzip.open(BXfq, 'wb')
+		wBXfq = gzip.open(BXfq, 'wb')
+
+		if barcode_sequence != None:
+			fq2bam = new_fq_prefix + ".fq.sam"
+			wfq2bam = open(fq2bam, 'w')
+			fq2baminfo = "@HD\tVN:1.3\n@SQ\tSN:chr1\tLN:248956422\n"
+			wfq2bam.write(fq2baminfo)
 
 		Failedfq = new_fq_prefix + ".failed.fq.gz"
 		wFailedfq = gzip.open(Failedfq, 'wb')
@@ -235,9 +270,6 @@ class modify_barcode:
 			o_rawfq = gzip.open(rawfq, "rb")
 		else:
 			o_rawfq = open(rawfq, "r")
-
-		newfq1_out = gzip.open(newfqfile1, 'wb')
-		newfq2_out = gzip.open(newfqfile2, 'wb')
 
 		raw_fq1_info_list = list()
 		raw_fq2_info_list = list()
@@ -359,170 +391,172 @@ class modify_barcode:
 							clean_fq2_info_list[n] += count_info2_list[n]
 
 						realbarcode = "".join(barcode_ori)
-					
-						newfq_seq1 = realbarcode + rawfq_seq1[23:]
-						newfq_qua1 = realbarcodequa + rawfq_qua1[23:]
-						newfq1 = rawfq_id1 + "\n" + newfq_seq1 + "\n" + rawfq_str1 + "\n" + newfq_qua1 + "\n"
-						newfq_seq2 = str(realbarcode) + str(rawfq_seq2)
-						newfq_qua2 = str(realbarcodequa) + str(rawfq_qua2)
-						newfq2 = "\n".join([rawfq_id2, newfq_seq2, rawfq_str2, newfq_qua2, ""])
 
-						newfq1_out.write(newfq1.encode())
-						newfq2_out.write(newfq2.encode())
+						newfq_id1 = (re.split("\s+", rawfq_id1))[0] + "/1" + "\tBC:Z:" + realbarcode
+						newfq_seq1 = rawfq_seq1[23:]
+						newfq_qua1 = rawfq_qua1[23:]
+						newfq_id2 = (re.split("\s+", rawfq_id2))[0] + "/2" + "\tBC:Z:" + realbarcode
+						newfq_seq2 = str(rawfq_seq2)
+						newfq_qua2 = str(rawfq_qua2)
 
-						if add == 1:
-							newfq_id1 = rawfq_id1 + " BX:" + realbarcode
-							newfq_seq1 = rawfq_seq1[23:]
-							newfq_qua1 = rawfq_qua1[23:]
-							newfq_id2 = rawfq_id2 + " BX:" + realbarcode
-							newfq_seq2 = str(rawfq_seq2)
-							newfq_qua2 = str(rawfq_qua2)
+						BXout = "\n".join([newfq_id1, newfq_seq1, rawfq_str1, newfq_qua1, newfq_id2, newfq_seq2, rawfq_str2, newfq_qua2, ""])
+						wBXfq.write(BXout.encode())
 
-							BXout = "\n".join([newfq_id1, newfq_seq1, rawfq_str1, newfq_qua1, newfq_id2, newfq_seq2, rawfq_str2, newfq_qua2, ""])
-							wBXfq.write(BXout.encode())
+						if barcode_sequence != None:
+							readid = realbarcode + "_" + ((re.split("\s+", rawfq_id1))[0]).replace('@', '')
+							readlength1 = str(len(newfq_seq1)) + "M"
+							readlength2 = str(len(newfq_seq2)) + "M"
+							fq2baminfo = "\t".join([readid, "*", "*", "*", "*", readlength1, "*", "*", "*", newfq_seq1, newfq_qua1]) + "\n"
+							wfq2bam.write(fq2baminfo)
+							fq2baminfo = "\t".join([readid, "*", "*", "*", "*", readlength2, "*", "*", "*", newfq_seq2, newfq_qua2]) + "\n"
+							wfq2bam.write(fq2baminfo)
 					else:
 						Failedout = "\n".join([rawfq_id1, rawfq_seq1, rawfq_str1, rawfq_qua1, rawfq_id2, rawfq_seq2, rawfq_str2, rawfq_qua2, ""])
 						wFailedfq.write(Failedout.encode())
 		wFailedfq.close()
-		newfq1_out.close()
-		newfq2_out.close()
-		if add == 1:
-			wBXfq.close()
+		wBXfq.close()
+
+		if barcode_sequence != None:
+			wfq2bam.close()
+			shell = shelldir + "/" + tmpprefix + ".sortbam.sh"
+			wshell = open(shell, 'w')
+			shell_line = " ".join([samtools_path, "view -S -h -b", fq2bam, ">", fq2bam + ".bam"]) + "\n"
+			wshell.write(shell_line)
+			shell_line = "rm " + fq2bam + "\n"
+			wshell.write(shell_line)
+			wshell.close()
+			subprocess.call(["sh", shell])
+
 		print("[ %s ] barcode info of %s has been modified\n" % (time.asctime(), rawfq))
 		return(raw_fq1_info_list, raw_fq2_info_list, clean_fq1_info_list, clean_fq2_info_list, count_info1_list, count_info2_list, original_barcode_count, mapped_barcode_count, corrected_barcode_count)
 
-class OUTERSOFT:
-	def find_samtools_version(self, samtools_path, outdir = './'):
-		randomstring = ''.join(random.sample(string.ascii_letters + string.digits, 8))
-		tmpshell = outdir + "/" + randomstring + ".sh"
-		tmplog = outdir + "/" + randomstring + ".log"
-		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join([samtools_path, "2>", tmplog, "\n"])
-		wtmpshell.write(shell_line)
-		wtmpshell.close()
-		subprocess.call(["sh", tmpshell])
+	def get_new_barcode(self, barcode_num, _start):
+		bin_list = (16777216, 4194304, 1048576, 262144, 65536, 16384, 4096, 1024, 256, 64, 16, 4)
+		base_dict = {0:"A", 1:"C", 2:"G", 3:"T"}
+		n = barcode_num
+		plist = list()
+		for i in range(0, 12):
+			plist.append(0)
+		if barcode_num >= bin_list[_start-1]:
+			_start = _start - 1
+		for b in range(_start, 12):
+			com = n // bin_list[b]
+			n = n % bin_list[b]
+			p = 12 - b
+			plist[p] = com
+		convert = base_dict[n]
+		for r in range(1,12):
+			convert = base_dict[plist[r]] + convert
+		return(_start, convert)
 
-		sv = 0
-		rlog = open(tmplog, 'r')
-		for log in rlog:
-			if re.search("Version", log):
-				loginfo = re.split('\s', log)
-				sv = (re.split('\.', loginfo[1]))[0]
-		rlog.close()
-		subprocess.call(["rm", tmpshell, tmplog])
-		return(int(sv))
-
-	def fill_barcode(self, original_sam, samtools_path):
-		print("[ %s ] modify barcode info of %s \n" % (time.asctime(), original_sam))
-		original_name = os.path.basename(original_sam)
-		new_sam = original_sam.replace('sam', 'new.sam')
-		new_bam = new_sam.replace('sam', 'bam')
-		sorted_bam = new_sam.replace('new.sam', 'sorted')
-
-		roriginal_sam = open(original_sam, 'r')
-		o_new_sam = open(new_sam, 'w')
-		convert_strand = {"a":"T", "c":"G", "g":"C", "t":"A"}
-		
-		while True:
-			saminfo = roriginal_sam.readline()
-			if len(saminfo) == 0:
-				break
-			else:
-				if saminfo.startswith('@'):
-					o_new_sam.write(saminfo)
-				else:
-					saminfo2 = roriginal_sam.readline()
-					saminfo = saminfo.strip()
-					saminfo2 = saminfo2.strip()
-					saminfolist = re.split('\t', saminfo)
-					saminfolist2 = re.split('\t', saminfo2)
-					N_info = 0
-					for s in range(len(saminfolist)):
-						if 'BC:Z' in saminfolist[s]:
-							if re.search('N', saminfolist[s], re.IGNORECASE):
-								N_info = 1
-							if saminfolist[s] != saminfolist2[s]:
-								errinfo = saminfolist[0] + "\t" + saminfolist[s] + "\t" + saminfolist2[s] + "\n"
-								sys.stderr.write("Warning! The barcode of paired reads are not the same: %s\n" % errinfo)
-							BClist = list(saminfolist[s])
-							BClist[1] = "X"
-							for b in range(5,21):
-								if BClist[b].islower():
-									BClist[b] = convert_strand[BClist[b]]
-							BClist[21] = "-1"
-							saminfolist[s] = "".join(BClist[0:22])
-							saminfolist2[s] = saminfolist[s]
-
-					if N_info == 0:
-						saminfo = "\t".join(saminfolist) + '\n'
-						o_new_sam.write(saminfo)
-						saminfo2 = "\t".join(saminfolist2) + '\n'
-						o_new_sam.write(saminfo2)
-
-		roriginal_sam.close()
-		o_new_sam.close()
-
-		shelldir = os.path.dirname(sorted_bam) + "/shell"
+	def generate_barcode(self, split_fq_sam_file_List, outdir, samtools_path, split_modify_fq_file_List, file_sign, maxsize, barcode_sequence):
+		fqsamlist = list()
+		rsplit_fq_sam_file_List = open(split_fq_sam_file_List, 'r')
+		for split_fq_sam_file_List_info in rsplit_fq_sam_file_List:
+			fqsamlist.append((re.split("\t", split_fq_sam_file_List_info.strip()))[1])
+			otherfiletmplist.append((re.split("\t", split_fq_sam_file_List_info.strip()))[1])
+		mergedFqBam = fqsamlist[0].replace("0.fq.sam.bam", "fq.merged.bam")
+		shelldir = outdir + "/shell"
 		check_info(shelldir, "dir")
-		shell = shelldir + "/" + os.path.basename(sorted_bam) + ".sh"
-		logfile = shell + ".log"
-		oshell = open(shell, 'w')
-		sv = self.find_samtools_version(samtools_path, shelldir)
-		if sv == 0:
-			shell_line = " ".join([samtools_path, "view -h -S -b", new_sam, ">", new_bam, "2>", logfile, "\n"])
-			oshell.write(shell_line)
-			shell_line = " ".join([samtools_path, "sort -m 1G", new_bam, sorted_bam, "2>>", logfile, "\n"])
-			oshell.write(shell_line)
+		shell = shelldir + "/merge_fqbam.sh"
+		wshell = open(shell, 'w')
+		if len(fqsamlist) > 1:
+			allfqsam = " ".join(fqsamlist)
+			shell_line = " ".join([samtools_path, "merge -f", mergedFqBam, allfqsam]) + "\n"
 		else:
-			shell_line = " ".join([samtools_path, "view -h -S -b -o", new_bam, new_sam, "2>", logfile + "\n"])
-			oshell.write(shell_line)
-			shell_line = " ".join([samtools_path, "sort -m 2G -o", sorted_bam + ".sorted.bam -T", sorted_bam, new_bam, "2>>", logfile, "\n"])
-			oshell.write(shell_line)
-			shell_line = " ".join(["mv", sorted_bam + ".sorted.bam", sorted_bam + ".bam", "2>>", logfile, "\n"])
-			oshell.write(shell_line)
-		shell_line = " ".join(["rm", original_sam, new_sam, new_bam, "\n"])
-		oshell.write(shell_line)
-		oshell.close()
+			shell_line = " ".join(["ln -sf", fqsamlist[0], mergedFqBam]) + "\n"
+		wshell.write(shell_line)
+		sv = find_samtools_version(samtools_path, shelldir)
+		sortedFqBamprefix = mergedFqBam.replace("fq.merged.bam", "fq.merged.sorted")
+		sortedFqBam = sortedFqBamprefix + ".bam"
+		if sv == 0:
+			shell_line = " ".join([samtools_path, "sort -n -m 1G", mergedFqBam, sortedFqBamprefix]) + "\n"
+		else:
+			shell_line = " ".join([samtools_path, "sort -n -m 1G -o", sortedFqBamprefix + ".bam", mergedFqBam]) + "\n"
+		wshell.write(shell_line)
+		shell_line = " ".join([samtools_path, "index", sortedFqBam]) + "\n"
+		wshell.write(shell_line)
+		wshell.close()
 		subprocess.call(["sh", shell])
-		print("[ %s ] modify barcode info, finished! %s \n" % (time.asctime(), sorted_bam + ".bam"))
+		new_fq_prefix = sortedFqBam.replace("fq.merged.sorted.bam", "")
+		otherfiletmplist.append(mergedFqBam)
+		otherfiletmplist.append(sortedFqBam)
+		otherfiletmplist.append(sortedFqBam + ".bai")
 
-	def bwa_fq(self, fq1, fq2, outsam, bwa_path, bwa_aln_parameter, bwa_sam_parameter, RGinfo, samtools_path):
-		sai1 = fq1 + '1.sai'
-		sai2 = fq2 + '2.sai'
+		wsplit_modify_fq_file_List = open(split_modify_fq_file_List, 'w')
+		SplitSize = 0
+		rsortedFqBam = pysam.AlignmentFile(sortedFqBam, 'rb')
+		readid = "N"
+		barcodeid = 0
+		barcode_marker = "N"
+		new_barcode_sequence = "N"
+		start = 11
 
-		print("[ %s ] fq alignment starts: %s %s \n" % (time.asctime(), fq1, fq2))
-		fqprefix = (os.path.basename(fq1)).replace("_1.fq.gz", "")
+		s = 0
+		split_modify_fq_file = fqsamlist[0].replace("0.fq.sam.bam", "") + str(s) + ".BX.modified.fq.gz"
+		wsplit_modify_fq_file_List.write(split_modify_fq_file + "\n")
+		wsplit_modify_fq_file = gzip.open(split_modify_fq_file, 'wb')
+		for FqBaminfo in rsortedFqBam:
+			(real_barcode, real_readid) = re.split("_", FqBaminfo.query_name)
+			if FqBaminfo.query_name != readid:
+				readid = FqBaminfo.query_name
+				if barcode_marker != real_barcode:
+					barcode_marker = real_barcode
+					(start, new_barcode_suffix) = self.get_new_barcode(barcodeid, start)
+					barcodeid += 1
+					new_barcode_sequence = barcode_sequence + new_barcode_suffix
+				real_readid = '@' + real_readid + "/1\tBC:Z:" + new_barcode_sequence
+			else:
+				real_readid = '@' + real_readid + "/2\tBC:Z:" + new_barcode_sequence
+			SplitSize += 4
+			complete_read_info = "\n".join([real_readid, FqBaminfo.query_sequence, "+", pysam.qualities_to_qualitystring(FqBaminfo.query_qualities)]) + "\n"
+			if SplitSize > maxsize:
+				wsplit_modify_fq_file.close()
+				s += 1
+				SplitSize = 4
+				split_modify_fq_file = fqsamlist[0].replace("0.fq.sam.bam", "") + str(s) + ".BX.modified.fq.gz"
+				wsplit_modify_fq_file_List.write(split_modify_fq_file + "\n")
+				wsplit_modify_fq_file = gzip.open(split_modify_fq_file, 'wb')
+			wsplit_modify_fq_file.write(complete_read_info.encode())
+		rsortedFqBam.close()
+		wsplit_modify_fq_file_List.close()
+		wsplit_modify_fq_file.close()
+
+		wfile_sign = open(file_sign, 'w')
+		wfile_sign.write("done!\n")
+		wfile_sign.close
+
+		return(split_modify_fq_file_List)
+
+class OUTERSOFT:
+	def bwa_fq(self, fq1, outsam, bwa_path, bwa_aln_parameter, bwa_sam_parameter, RGinfo, samtools_path):
+		print("[ %s ] fq alignment starts: %s \n" % (time.asctime(), fq1))
+		fqprefix = (os.path.basename(fq1)).replace(".gz", "")
 		outdir = os.path.dirname(fq1)
 		shelldir = os.path.join(outdir, "shell")
 		check_info(shelldir, "dir")
-		shell = os.path.join(shelldir, fqprefix + ".fq.aln.sh")
+		shell = os.path.join(shelldir, fqprefix + ".aln.sh")
 		logfile = shell + ".log"
 		oshell = open(shell, 'w')
-		shell_line = " ".join([bwa_path, 'aln', ref_path, fq1, bwa_aln_parameter, '-f', sai1, '2>', logfile, '&\n'])
-		oshell.write(shell_line)
-		shell_line = " ".join([bwa_path, 'aln', ref_path, fq2, bwa_aln_parameter, '-f', sai2, '2>>', logfile, '&\nwait\n'])
-		oshell.write(shell_line)
 		if RGinfo != 0:
 			RGinfo = '"' + RGinfo + '"'
-			shell_line = " ".join([bwa_path, 'sampe', bwa_sam_parameter, '-r', RGinfo, ref_path, sai1, sai2, fq1, fq2, ">", outsam, '2>>', logfile + "\nrm", sai1, sai2, "\n"])
+			shell_line = " ".join([bwa_path, 'mem -p -C', '-r', RGinfo, ref_path, fq1, ">", outsam, '2>', logfile + "\n"])
 		else:
-			shell_line = " ".join([bwa_path, 'sampe', bwa_sam_parameter, ref_path, sai1, sai2, fq1, fq2, ">", outsam, '2>>', logfile + "\nrm", sai1, sai2, "\n"])
+			shell_line = " ".join([bwa_path, 'mem -p -C', ref_path, fq1, ">", outsam, '2>', logfile + "\n"])
+		oshell.write(shell_line)
+		outbam = outsam.replace(".sam", ".bam")
+		shell_line = " ".join([samtools_path, "view -S -h -F 256 -F 2048 -b", outsam, ">", outbam]) + "\n"
 		oshell.write(shell_line)
 		oshell.close()
 
 		subprocess.call(["sh", shell])
-		print("[ %s ] fq alignment finish: %s \n" % (time.asctime(), outsam))
+		print("[ %s ] fq alignment finish: %s \n" % (time.asctime(), outbam))
 
-	def FastQC(self, fq_prefix, fastqc_path, statdir):
-		fq1 = fq_prefix + "_1.fq.gz"
-		fq2 = fq_prefix + "_2.fq.gz"
-
+	def FastQC(self, fq, fastqc_path, statdir):
 		tmpshell = os.path.join(os.path.dirname(statdir), "shell/fastqc.sh")
 		logfile = tmpshell + ".log"
 		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join([fastqc_path, "-f fastq -o", statdir, fq1, "2>", logfile, "&\n"])
-		wtmpshell.write(shell_line)
-		shell_line = " ".join([fastqc_path, "-f fastq -o", statdir, fq2, "2>>", logfile, "&\n"])
+		shell_line = " ".join([fastqc_path, "-f fastq -o", statdir, fq, "2>", logfile, "&\n"])
 		wtmpshell.write(shell_line)
 		shell_line = "wait\necho Done\n"
 		wtmpshell.write(shell_line)
@@ -554,16 +588,16 @@ def usage():
 	Usage: python clean_fq_alignment.py <options>
 
 	Basic options:
-		-i --input, the input path of compressed or uncompressed fastqs.
+		-i --input, the input path of compressed or uncompressed fastqs; would be treated as the 1st file of paired fastq files if -2 also in use.
+		-2 --input2, the input path of compressed or uncompressed fastqs; would be treated as the 2nd file of paired fastq files if used.
 		-o --outputdir, the path of output
 		-c --config, the path of configuration file [default: ./config/Basic.config]
 		-r --RG, RG info for alignment
 		-h --help, print help info
 	Advanced options:
-		-z --splitsize, the amount of reads of splited fastq, reads num = split_size / 4 [default: 15000000 lines, 3750000 reads, compressed file size: ~300M]
+		-z --splitsize, the amount of reads of splited fastq, reads num = split_size / 8 [default: 15000000 lines, 1875000 read-pairs, compressed file size: ~300M]
+		-b --barcode, the first four bases of barcode sequence [default: None]
 		-n --process_num, the max amout of sub-processing [default: 4]
-		-N --noBX, generate additional fastqs without barcode tags [default: yes]
-
 
 	'''
 	print(purification_usage)
@@ -575,19 +609,24 @@ if __name__ == '__main__':
 
 	RGInfo = 0
 	inputfq = None
+	inputfq2 = 0
 	outputdir = None
 	ConfigFile = None
-	addBX = 1
 	split_size = 15000000
 	process_num = 4
-	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:o:c:z:n:r:hN', ['input', 'outputdir', 'config', 'splitsize', 'process_num', 'RG', 'help', 'noBX'])
+	barcode_seq = None
+	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:2:o:c:b:z:n:r:h', ['input', 'input2', 'outputdir', 'config', 'barcode', 'splitsize', 'process_num', 'RG', 'help'])
 	for o, a in opts:
 		if o == '-i' or o == '--input':
 			inputfq = a
+		if o == '-2' or o == '--input2':
+			inputfq2 = a
 		if o == '-o' or o == '--outputdir':
 			outputdir = a
 		if o == '-c' or o == '--config':
 			ConfigFile = a
+		if o == '-b' or o == '--barcode':
+			barcode_seq = str(a)
 		if o == '-z' or o == '--splitsize':
 			split_size = int(a)
 		if o == '-n' or o == '--process_num':
@@ -597,8 +636,6 @@ if __name__ == '__main__':
 		if o == '-h' or o == '--help':
 			usage()
 			sys.exit(-1)
-		if o == '-N' or o == '--noBX':
-			addBX = 0
 
 	if os.path.isfile(inputfq):
 		pass
@@ -614,6 +651,7 @@ if __name__ == '__main__':
 	G.get_config(ConfigFile)
 
 	R = extract_barcode()
+	M = modify_barcode()
 	SplitFqBarcodeFileList = outputdir + '/split_fq_barcode.txt'
 	revise_sign = SplitFqBarcodeFileList + ".sign"
 	split_done = 1
@@ -625,127 +663,151 @@ if __name__ == '__main__':
 			if os.path.exists(SplitFqFile) == False or os.path.exists(SplitBarcodeFile) == False:
 				split_done = 0
 		rSplitFqBarcodeFileList.close()
+	else:
+		split_done = 0
 	
 	print("[ %s ] extract original barcode info from %s\n" % (time.asctime(), inputfq))
-	(prefix_name, SplitFqBarcodeFileList) = R.revise(inputfq, outputdir, split_size, split_done)
+	(prefix_name, SplitFqBarcodeFileList) = R.revise(inputfq, outputdir, split_size, split_done, inputfq2)
 	print("[ %s ] original barcode had been extracted, and raw fq file had been splited, output files has been listed in : %s\n" % (time.asctime(), SplitFqBarcodeFileList))
 
-	barcoderef = G.Barcode()
-	barcoderef_index = barcoderef + ".ann"
-	if os.path.isfile(barcoderef_index):
-		pass
-	else:
-		sys.stderr.write("[ %s ] ERROR: index of %s does not exist!\n" % (time.asctime(), barcoderef))
-		sys.exit(-1)
+	SplitCleanFqFileList = outputdir + '/split_clean_fq.txt'
+	replace_barcode_sign = SplitCleanFqFileList + ".sign"
+	samtools = G.Samtools()
 
-	bracode_aln_parameter = G.Barcode_aln_par()
-	bwa_path = G.Bwa()
-	rSplitFqBarcodeFileList = open(SplitFqBarcodeFileList, 'r')
-	M = modify_barcode()
 	fq_statistics_result = list()
-	im = 0
-	pool = multiprocessing.Pool(processes = process_num)
-	newfq1filetmplist = list()
-	newfq2filetmplist = list()
 	BXfqfiletmplist = list()
+	BXModifiedfqfiletmplist = list()
 	failedfqtmplist = list()
 	otherfiletmplist = list()
 
-	SplitCleanFqFileList = outputdir + '/split_clean_fq.txt'
-	wSplitCleanFqFileList = open(SplitCleanFqFileList, 'w')
-	for splitinfo in rSplitFqBarcodeFileList:
-		(split_fq_file, split_barcode_file) = re.split("\t", splitinfo.strip())
-		if os.path.exists(split_fq_file) == False or os.path.getsize(split_fq_file) == 0 or os.path.exists(split_barcode_file) == False or os.path.getsize(split_barcode_file) == 0:
-			sys.stderr.write("[ %s ] ERROR: %s or %s does not exist or is empty!\n" $ (time.asctime(), split_fq_file, split_barcode_file))
+	if os.path.exists(replace_barcode_sign) and os.path.getsize(replace_barcode_sign) != 0:
+		print("[ %s ] barcode info has been modified!\n" % time.asctime())
+	else:
+		barcoderef = G.Barcode()
+		barcoderef_index = barcoderef + ".ann"
+		if os.path.isfile(barcoderef_index):
+			pass
+		else:
+			sys.stderr.write("[ %s ] ERROR: index of %s does not exist!\n" % (time.asctime(), barcoderef))
 			sys.exit(-1)
-		barcodesam = (str(split_barcode_file))[0:(len(split_barcode_file)-2)] + "sam"
-		otherfiletmplist.append(barcodesam)
-		otherfiletmplist.append(split_fq_file)
-		otherfiletmplist.append(split_barcode_file)
-		newprefix = (str(split_barcode_file))[0:(len(split_barcode_file)-11)]
 
-		im += 1
-		if im <= process_num:
-			fq_statistics_result.append(pool.apply_async(M.replace_barcode, (split_fq_file, split_barcode_file, barcodesam, bwa_path, bracode_aln_parameter, barcoderef, newprefix, addBX,)))
-		if im == process_num:
+		bracode_aln_parameter = G.Barcode_aln_par()
+		bwa_path = G.Bwa()
+		rSplitFqBarcodeFileList = open(SplitFqBarcodeFileList, 'r')
+		im = 0
+		pool = multiprocessing.Pool(processes = process_num)
+
+		wSplitCleanFqFileList = open(SplitCleanFqFileList, 'w')
+		wreplace_barcode_sign = open(replace_barcode_sign, 'w')
+		for splitinfo in rSplitFqBarcodeFileList:
+			(split_fq_file, split_barcode_file) = re.split("\t", splitinfo.strip())
+			if os.path.exists(split_fq_file) == False or os.path.getsize(split_fq_file) == 0 or os.path.exists(split_barcode_file) == False or os.path.getsize(split_barcode_file) == 0:
+				sys.stderr.write("[ %s ] ERROR: %s or %s does not exist or is empty!\n" % (time.asctime(), split_fq_file, split_barcode_file))
+				sys.exit(-1)
+			barcodesam = (str(split_barcode_file))[0:(len(split_barcode_file)-2)] + "sam"
+			otherfiletmplist.append(barcodesam)
+			otherfiletmplist.append(split_fq_file)
+			otherfiletmplist.append(split_barcode_file)
+			newprefix = (str(split_barcode_file))[0:(len(split_barcode_file)-11)]
+
+			im += 1
+			if im <= process_num:
+				fq_statistics_result.append(pool.apply_async(M.replace_barcode, (split_fq_file, split_barcode_file, barcodesam, bwa_path, bracode_aln_parameter, barcoderef, newprefix, barcode_seq, samtools)))
+			if im == process_num:
+				pool.close()
+				pool.join()
+
+				im = 0
+				pool = multiprocessing.Pool(processes = process_num)
+
+			BXfqfile = newprefix + ".BX.fq.gz"
+			failedfqfile = newprefix + ".failed.fq.gz"
+			failedfqtmplist.append(failedfqfile)
+			fq2bamfile = newprefix + ".fq.sam.bam"
+
+			SplitCleanFqFile = BXfqfile + "\n"
+			if barcode_seq != None:
+				SplitCleanFqFile = "\t".join([BXfqfile, fq2bamfile]) + "\n"
+				otherfiletmplist.append(BXfqfile)
+			else:
+				BXfqfiletmplist.append(BXfqfile)
+			wSplitCleanFqFileList.write(SplitCleanFqFile)
+		wSplitCleanFqFileList.close()
+
+		if im > 0:
 			pool.close()
 			pool.join()
 
-			im = 0
-			pool = multiprocessing.Pool(processes = process_num)
+		statout = prefix_name + ".fq_statistics.txt"
+		wstatout = open(statout, 'w')
+		raw_fq1_info_list = [0, 0, 0, 0, 0]
+		raw_fq2_info_list = [0, 0, 0, 0, 0]
+		clean_fq1_info_list = [0, 0, 0, 0, 0]
+		clean_fq2_info_list = [0, 0, 0, 0, 0]
+		count_info1_list = [0, 0, 0, 0, 0]
+		count_info2_list = [0, 0, 0, 0, 0]
+		original_barcode_count = 0
+		mapped_barcode_count = 0
+		corrected_barcode_count = 0
+		for res in fq_statistics_result:
+			for ai in range(len(raw_fq1_info_list)):
+				raw_fq1_info_list[ai] += int(res.get()[0][ai])
+				raw_fq2_info_list[ai] += int(res.get()[1][ai])
+				clean_fq1_info_list[ai] += int(res.get()[2][ai])
+				clean_fq2_info_list[ai] += int(res.get()[3][ai])
+				count_info1_list[ai] += int(res.get()[4][ai])
+				count_info2_list[ai] += int(res.get()[5][ai])
+			original_barcode_count += int(res.get()[6])
+			mapped_barcode_count += int(res.get()[7])
+			corrected_barcode_count += int(res.get()[8])
+		statlog = "#Sequencing quality report\n" + os.path.basename(prefix_name) + "\tYield(bp)\tRead_length(bp)\tGC(%)\tQ20(%)\tQ30(%)\n"
+		wstatout.write(statlog)
+		raw_fq1_info_list[1] = int(raw_fq1_info_list[0] / raw_fq1_info_list[1])
+		raw_fq2_info_list[1] = int(raw_fq2_info_list[0] / raw_fq2_info_list[1])
+		clean_fq1_info_list[1] = int(clean_fq1_info_list[0] / clean_fq1_info_list[1])
+		clean_fq2_info_list[1] = int(clean_fq2_info_list[0] / clean_fq2_info_list[1])
+		for n in range(2, 5):
+			raw_fq1_info_list[n] = round(100.00 * raw_fq1_info_list[n] / raw_fq1_info_list[0], 3)
+			raw_fq2_info_list[n] = round(100.00 * raw_fq2_info_list[n] / raw_fq2_info_list[0], 3)
+			clean_fq1_info_list[n] = round(100.00 * clean_fq1_info_list[n] / clean_fq1_info_list[0], 3)
+			clean_fq2_info_list[n] = round(100.00 * clean_fq2_info_list[n] / clean_fq2_info_list[0], 3)
+		for n in range(len(raw_fq1_info_list)):
+			raw_fq1_info_list[n] = str(raw_fq1_info_list[n])
+			raw_fq2_info_list[n] = str(raw_fq2_info_list[n])
+			clean_fq1_info_list[n] = str(clean_fq1_info_list[n])
+			clean_fq2_info_list[n] = str(clean_fq2_info_list[n])
+		statlog = "raw fastq1:\t" + "\t".join(raw_fq1_info_list) + "\n"
+		wstatout.write(statlog)
+		statlog = "raw fastq2:\t" + "\t".join(raw_fq2_info_list) + "\n"
+		wstatout.write(statlog)
+		statlog = "clean fastq1:\t" + "\t".join(clean_fq1_info_list) + "\n"
+		wstatout.write(statlog)
+		statlog = "clean fastq2:\t" + "\t".join(clean_fq2_info_list) + "\n\n"
+		wstatout.write(statlog)
+		statlog = "#Barcode correction report\namount of barcode in original fastq:\t" + str(original_barcode_count) + "\t100.0%\n"
+		wstatout.write(statlog)
+		qrate = round(100.0 * mapped_barcode_count / original_barcode_count, 2)
+		statlog = "amount of barcode that mapped to the white list:\t" + str(mapped_barcode_count) + "\t" + str(qrate) + "%\n"
+		wstatout.write(statlog)
+		qrate = round(100.0 * corrected_barcode_count / original_barcode_count, 2)
+		statlog = "amount of barcode that perfectly mapped to the white list after corrected:\t" + str(corrected_barcode_count) + "\t" + str(qrate) + "%\n"
+		wstatout.write(statlog)
+		wstatout.close()
 
-		newfq1file = newprefix + "_1.fq.gz"
-		newfq1filetmplist.append(newfq1file)
-		newfq2file = newprefix + "_2.fq.gz"
-		newfq2filetmplist.append(newfq2file)
-		BXfqfile = newprefix + ".BX.fq.gz"
-		BXfqfiletmplist.append(BXfqfile)
-		failedfqfile = newprefix + ".failed.fq.gz"
-		failedfqtmplist.append(failedfqfile)
+		wreplace_barcode_sign.write("done!\n")
+		wreplace_barcode_sign.close()
 
-		SplitCleanFqFile = "\t".join([newfq1file, newfq2file, BXfqfile]) + "\n"
-		wSplitCleanFqFileList.write(SplitCleanFqFile)
-	wSplitCleanFqFileList.close()
-
-	if im > 0:
-		pool.close()
-		pool.join()
-
-	statout = prefix_name + ".fq_statistics.txt"
-	wstatout = open(statout, 'w')
-	raw_fq1_info_list = [0, 0, 0, 0, 0]
-	raw_fq2_info_list = [0, 0, 0, 0, 0]
-	clean_fq1_info_list = [0, 0, 0, 0, 0]
-	clean_fq2_info_list = [0, 0, 0, 0, 0]
-	count_info1_list = [0, 0, 0, 0, 0]
-	count_info2_list = [0, 0, 0, 0, 0]
-	original_barcode_count = 0
-	mapped_barcode_count = 0
-	corrected_barcode_count = 0
-	for res in fq_statistics_result:
-		for ai in range(len(raw_fq1_info_list)):
-			raw_fq1_info_list[ai] += int(res.get()[0][ai])
-			raw_fq2_info_list[ai] += int(res.get()[1][ai])
-			clean_fq1_info_list[ai] += int(res.get()[2][ai])
-			clean_fq2_info_list[ai] += int(res.get()[3][ai])
-			count_info1_list[ai] += int(res.get()[4][ai])
-			count_info2_list[ai] += int(res.get()[5][ai])
-		original_barcode_count += int(res.get()[6])
-		mapped_barcode_count += int(res.get()[7])
-		corrected_barcode_count += int(res.get()[8])
-	statlog = "#Sequencing quality report\n" + os.path.basename(prefix_name) + "\tYield(bp)\tRead_length(bp)\tGC(%)\tQ20(%)\tQ30(%)\n"
-	wstatout.write(statlog)
-	raw_fq1_info_list[1] = int(raw_fq1_info_list[0] / raw_fq1_info_list[1])
-	raw_fq2_info_list[1] = int(raw_fq2_info_list[0] / raw_fq2_info_list[1])
-	clean_fq1_info_list[1] = int(clean_fq1_info_list[0] / clean_fq1_info_list[1])
-	clean_fq2_info_list[1] = int(clean_fq2_info_list[0] / clean_fq2_info_list[1])
-	for n in range(2, 5):
-		raw_fq1_info_list[n] = round(100.00 * raw_fq1_info_list[n] / raw_fq1_info_list[0], 3)
-		raw_fq2_info_list[n] = round(100.00 * raw_fq2_info_list[n] / raw_fq2_info_list[0], 3)
-		clean_fq1_info_list[n] = round(100.00 * clean_fq1_info_list[n] / clean_fq1_info_list[0], 3)
-		clean_fq2_info_list[n] = round(100.00 * clean_fq2_info_list[n] / clean_fq2_info_list[0], 3)
-	for n in range(len(raw_fq1_info_list)):
-		raw_fq1_info_list[n] = str(raw_fq1_info_list[n])
-		raw_fq2_info_list[n] = str(raw_fq2_info_list[n])
-		clean_fq1_info_list[n] = str(clean_fq1_info_list[n])
-		clean_fq2_info_list[n] = str(clean_fq2_info_list[n])
-	statlog = "raw fastq1:\t" + "\t".join(raw_fq1_info_list) + "\n"
-	wstatout.write(statlog)
-	statlog = "raw fastq2:\t" + "\t".join(raw_fq2_info_list) + "\n"
-	wstatout.write(statlog)
-	statlog = "clean fastq1:\t" + "\t".join(clean_fq1_info_list) + "\n"
-	wstatout.write(statlog)
-	statlog = "clean fastq2:\t" + "\t".join(clean_fq2_info_list) + "\n\n"
-	wstatout.write(statlog)
-	statlog = "#Barcode correction report\namount of barcode in original fastq:\t" + str(original_barcode_count) + "\t100.0%\n"
-	wstatout.write(statlog)
-	qrate = round(100.0 * mapped_barcode_count / original_barcode_count, 2)
-	statlog = "amount of barcode that mapped to the white list:\t" + str(mapped_barcode_count) + "\t" + str(qrate) + "%\n"
-	wstatout.write(statlog)
-	qrate = round(100.0 * corrected_barcode_count / original_barcode_count, 2)
-	statlog = "amount of barcode that perfectly mapped to the white list after corrected:\t" + str(corrected_barcode_count) + "\t" + str(qrate) + "%\n"
-	wstatout.write(statlog)
-	wstatout.close()
+	SplitModifyFqFileList = outputdir + '/split_modify_fq.txt'
+	modify_fq_sign = SplitModifyFqFileList + ".sign"
+	if barcode_seq != None and (os.path.exists(modify_fq_sign) == False or os.path.getsize(modify_fq_sign) == 0):
+		SplitModifyFqFileList = M.generate_barcode(SplitCleanFqFileList, outputdir, samtools, SplitModifyFqFileList, modify_fq_sign, split_size, barcode_seq)
+		if os.path.exists(SplitModifyFqFileList) == False or os.path.getsize(SplitModifyFqFileList) == 0:
+			print("[ %s ] ERROR: %s does not exist!\n" % (time.asctime(), SplitModifyFqFileList))
+			sys.exit(-1)
+		rSplitModifyFqFileList = open(SplitModifyFqFileList, 'r')
+		for SplitModifyFqFileListinfo in rSplitModifyFqFileList:
+			BXModifiedfqfiletmplist.append(SplitModifyFqFileListinfo.strip())
+		rSplitModifyFqFileList.close()
 
 	O = OUTERSOFT()
 	ref_path = G.Ref()
@@ -758,66 +820,54 @@ if __name__ == '__main__':
 	bwa_path = G.Bwa()
 	bwa_aln_parameter = G.Fq_aln_par()
 	bwa_sam_parameter = G.Fq_sam_par()
-	samtools = G.Samtools()
 
-	SplitSamFileList = outputdir + '/split_sam.txt'
-	wSplitSamFileList = open(SplitSamFileList, 'w')
-	im = 0
-	pool = multiprocessing.Pool(processes = process_num)
-	rSplitCleanFqFileList = open(SplitCleanFqFileList, 'r')
-	for SplitCleanFqFileInfo in rSplitCleanFqFileList:
-		if os.path.exists(SplitCleanFqFileInfo) == False or os.path.getsize(SplitCleanFqFileInfo) == 0:
-			sys.stderr.write("[ %s ] ERROR: %s dose not exist or is empty!\n" % (time.asctime(), SplitCleanFqFileInfo))
-			sys.exit(-1)
-		SplitCleanFqFileInfolist = re.split("\t", SplitCleanFqFileInfo.strip())
-		fqsam = (str(SplitCleanFqFileInfolist[0]))[0:(len(SplitCleanFqFileInfolist[0])-8)] + ".sam"
-		SplitSamFileinfo = fqsam + "\n"
+	SplitSamFileList = outputdir + '/split_bam.txt'
+	aln_sign = SplitSamFileList + ".sign"
+	if os.path.exists(aln_sign) == False or os.path.getsize(aln_sign) == 0:
+		wSplitSamFileList = open(SplitSamFileList, 'w')
+		im = 0
+		pool = multiprocessing.Pool(processes = process_num)
+		if barcode_seq != None:
+			SplitCleanFqFileList = SplitModifyFqFileList
+		rSplitCleanFqFileList = open(SplitCleanFqFileList, 'r')
+		for SplitCleanFqFileInfo in rSplitCleanFqFileList:
+			SplitCleanFqFileInfolist = re.split("\t", SplitCleanFqFileInfo.strip())
+			if os.path.exists(SplitCleanFqFileInfolist[0]) == False or os.path.getsize(SplitCleanFqFileInfolist[0]) == 0:
+				sys.stderr.write("[ %s ] ERROR: %s dose not exist or is empty!\n" % (time.asctime(), SplitCleanFqFileInfolist[0]))
+				sys.exit(-1)
+			fqsam = (str(SplitCleanFqFileInfolist[0]))[0:(len(SplitCleanFqFileInfolist[0])-6)] + ".sam"
+			fqbam = fqsam.replace(".sam", ".bam")
+			otherfiletmplist.append(fqsam)
+			SplitSamFileinfo = fqbam + "\n"
 
-		wSplitSamFileList.write(SplitSamFileinfo)
+			wSplitSamFileList.write(SplitSamFileinfo)
 
-		im += 1
-		if im <= process_num:
-			pool.apply_async(O.bwa_fq, (SplitCleanFqFileInfolist[0], SplitCleanFqFileInfolist[1], fqsam, bwa_path, bwa_aln_parameter, bwa_sam_parameter, RGInfo, samtools, ))
-		if im == process_num:
+#		O.bwa_fq(SplitCleanFqFileInfolist[0], fqsam, bwa_path, bwa_aln_parameter, bwa_sam_parameter, RGInfo, samtools)
+			im += 1
+			if im <= process_num:
+				pool.apply_async(O.bwa_fq, (SplitCleanFqFileInfolist[0], fqsam, bwa_path, bwa_aln_parameter, bwa_sam_parameter, RGInfo, samtools, ))
+			if im == process_num:
+				pool.close()
+				pool.join()
+
+				im = 0
+				pool = multiprocessing.Pool(processes = process_num)
+	
+		if im > 0:
 			pool.close()
 			pool.join()
+		wSplitSamFileList.close()
 
-			im = 0
-			pool = multiprocessing.Pool(processes = process_num)
+		waln_sign = open(aln_sign, "w")
+		waln_sign.write("done!\n")
+		waln_sign.close()
+#	subprocess.call(["rm", SplitCleanFqFileList])
 	
-	if im > 0:
-		pool.close()
-		pool.join()
-	wSplitSamFileList.close()
-	subprocess.call(["rm", SplitCleanFqFileList])
-	
-	rSplitSamFileList = open(SplitSamFileList, 'r')
-	im = 0
-	pool = multiprocessing.Pool(processes = process_num)
 	SplitBamFilelist = list()
-	for SplitSamFile in rSplitSamFileList:
-		SplitSamFile = SplitSamFile.strip()
-		if os.path.exists(SplitSamFile) == False:
-			sys.stderr.write("[ %s ] ERROR: %s does not exist!\n" % (time.asctime(), SplitSamFile))
-			sys.exit(-1)
-		SplitBamFile = SplitSamFile.replace(".sam", ".sorted.bam")
-		SplitBamFilelist.append(SplitBamFile)
-		im += 1
-		if im <= process_num:
-			pool.apply_async(O.fill_barcode, (SplitSamFile, samtools, ))
-		if im == process_num:
-			pool.close()
-			pool.join()
-
-			im = 0
-			pool = multiprocessing.Pool(processes = process_num)
-	if im > 0:
-		pool.close()
-		pool.join()
-#		O.fill_barcode(SplitSamFile, samtools)
-	rSplitSamFileList.close()
-	subprocess.call(["rm", SplitSamFileList])
-
+	rSplitSamFileList = open(SplitSamFileList, 'r')
+	for SplitSamFileListInfo in rSplitSamFileList:
+		SplitBamFilelist.append(SplitSamFileListInfo.strip())
+		otherfiletmplist.append(SplitSamFileListInfo.strip())
 	allSplitBamFile = " ".join(SplitBamFilelist)
 	tmpmergeshell = SplitBamFilelist[0] + ".merge.sh"
 	wtmpmergeshell = open(tmpmergeshell, 'w')
@@ -825,46 +875,37 @@ if __name__ == '__main__':
 	if os.path.isfile(MergeBamFile):
 		subprocess.call(["rm", MergeBamFile])
 	if len(SplitBamFilelist) > 1:
-		shell_line = " ".join([samtools, "merge", MergeBamFile, allSplitBamFile]) + "\n"
+		shell_line = " ".join([samtools, "merge -f", MergeBamFile, allSplitBamFile]) + "\n"
 	else:
 		shell_line = " ".join(["cp", SplitBamFilelist[0], MergeBamFile]) + "\n"
 	wtmpmergeshell.write(shell_line)
-	shell_line = " ".join(["rm", allSplitBamFile]) + "\n"
-	wtmpmergeshell.write(shell_line)
 	wtmpmergeshell.close()
 	subprocess.call(["sh", tmpmergeshell])
-	subprocess.call(["rm", tmpmergeshell])
+	otherfiletmplist.append(tmpmergeshell)
 
 	tmpdatadir = outputdir + "/tmp"
 	check_info(tmpdatadir, "dir")
 
-	newallfq1file = prefix_name + "_1.fq.gz"
-	newallfq2file = prefix_name + "_2.fq.gz"
-	newallBXfqfile = prefix_name + ".BX.fq.gz"
+	newallBXfqfile = prefix_name + ".BX.modified.fq.gz"
+	final_fq_list = BXModifiedfqfiletmplist
+	if barcode_seq == None:
+		final_fq_list = BXfqfiletmplist
 	newallfailedfqfile = prefix_name + ".failed.fq.gz"
-	tmpshell = newallfq1file + ".cat.sh"
+	tmpshell = newallBXfqfile + ".cat.sh"
 	wtmpshell = open(tmpshell, 'w')
-	for fi in range(0,len(newfq1filetmplist)):
+	for fi in range(0,len(final_fq_list)):
 		if fi == 0:
-			shell_line = " ".join(["cat", newfq1filetmplist[fi], ">", newallfq1file + "\n", "mv", newfq1filetmplist[fi], tmpdatadir + "\n"])
-			wtmpshell.write(shell_line)
-			shell_line = " ".join(["cat", newfq2filetmplist[fi], ">", newallfq2file + "\n", "mv", newfq2filetmplist[fi], tmpdatadir + "\n"])
-			wtmpshell.write(shell_line)
-			shell_line = " ".join(["cat", BXfqfiletmplist[fi], ">", newallBXfqfile + "\n", "mv", BXfqfiletmplist[fi], tmpdatadir + "\n"])
+			shell_line = " ".join(["cat", final_fq_list[fi], ">", newallBXfqfile + "\n", "mv", final_fq_list[fi], tmpdatadir + "\n"])
 			wtmpshell.write(shell_line)
 			shell_line = " ".join(["cat", failedfqtmplist[fi], ">", newallfailedfqfile + "\n", "mv", failedfqtmplist[fi], tmpdatadir + "\n"])
 			wtmpshell.write(shell_line)
 		else:
-			shell_line = " ".join(["cat", newfq1filetmplist[fi], ">>", newallfq1file + "\n", "mv", newfq1filetmplist[fi], tmpdatadir + "\n"])
-			wtmpshell.write(shell_line)
-			shell_line = " ".join(["cat", newfq2filetmplist[fi], ">>", newallfq2file + "\n", "mv", newfq2filetmplist[fi], tmpdatadir + "\n"])
-			wtmpshell.write(shell_line)
-			shell_line = " ".join(["cat", BXfqfiletmplist[fi], ">>", newallBXfqfile + "\n", "mv", BXfqfiletmplist[fi], tmpdatadir + "\n"])
+			shell_line = " ".join(["cat", final_fq_list[fi], ">>", newallBXfqfile + "\n", "mv", final_fq_list[fi], tmpdatadir + "\n"])
 			wtmpshell.write(shell_line)
 			shell_line = " ".join(["cat", failedfqtmplist[fi], ">>", newallfailedfqfile + "\n", "mv", failedfqtmplist[fi], tmpdatadir + "\n"])
 			wtmpshell.write(shell_line)
 	othertmpfile = " ".join(otherfiletmplist)
-	shell_line = " ".join(["mv", othertmpfile, tmpdatadir + "\n"])
+	shell_line = " ".join(["mv", outputdir + "/split*txt*", othertmpfile, tmpdatadir + "\n"])
 	wtmpshell.write(shell_line)
 	wtmpshell.close()
 	subprocess.call(["sh", tmpshell])
@@ -874,7 +915,8 @@ if __name__ == '__main__':
 	statdir = outputdir + "/fastqc"
 	check_info(statdir, "dir")
 	Fastqc_path = G.Fastqc()
-	O.FastQC(prefix_name, Fastqc_path, statdir)
+	O.FastQC(newallBXfqfile, Fastqc_path, statdir)
 	print("[ %s ] fastq QC has finished, results have been writeen to %s \n\n" % (time.asctime(), statdir))
-	subprocess.call(["mv", newallfq1file, newallfq2file, SplitFqBarcodeFileList, tmpdatadir])
+
+#	subprocess.call(["mv", newallfq1file, newallfq2file, SplitFqBarcodeFileList, tmpdatadir])
 #### encode
