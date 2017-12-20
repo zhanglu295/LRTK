@@ -125,6 +125,9 @@ class extract_barcode:
 		elif b[(len(b)-3):] == ".fq":
 			b = b[0:(len(b)-3)]
 
+		if b.endswith("_1"):
+			b = b[0:(len(b)-2)]
+
 		if _split_done == 1:
 			fq_prefix_name = outdir + "/" + b
 			OutFileList = os.path.join(outdir, "split_fq_barcode.txt")
