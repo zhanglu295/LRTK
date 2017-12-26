@@ -115,7 +115,7 @@ class sequence_quality:
 		return QUALITY
 
 class extract_barcode:
-	def revise(self, rawfq, outdir, maxsize, _split_done, rawfq2 = 0):
+	def revise(self, rawfq, outdir, maxsize, _split_done, rawfq2):
 		(rawfq_path, rawfq_name) = os.path.split(rawfq)
 		b = str(rawfq_name)
 		if b[(len(b)-9):] == ".fastq.gz":
@@ -157,7 +157,7 @@ class extract_barcode:
 		wSplitBarcodeFile = gzip.open(SplitBarcodeFile, 'wb')
 
 		SplitSize = 0	
-		while True:
+		while 1:
 			rawfq_id1 = o_rawfq.readline()
 			rawfq_seq1 = o_rawfq.readline()
 			rawfq_str1 = o_rawfq.readline()
@@ -543,12 +543,20 @@ class OUTERSOFT:
 		oshell = open(shell, 'w')
 		if RGinfo != 0:
 			RGinfo = '"' + RGinfo + '"'
-			shell_line = " ".join([bwa_path, 'mem -p -C', '-r', RGinfo, ref_path, fq1, ">", outsam, '2>', logfile + "\n"])
+			shell_line = " ".join([bwa_path, 'mem -p -C', '-R', RGinfo, ref_path, fq1, ">", outsam, '2>', logfile + "\n"])
 		else:
 			shell_line = " ".join([bwa_path, 'mem -p -C', ref_path, fq1, ">", outsam, '2>', logfile + "\n"])
 		oshell.write(shell_line)
 		outbam = outsam.replace(".sam", ".bam")
 		shell_line = " ".join([samtools_path, "view -S -h -F 256 -F 2048 -b", outsam, ">", outbam]) + "\n"
+		oshell.write(shell_line)
+		sv = find_samtools_version(samtools_path, shelldir)
+		if sv == 0:
+			shell_line = " ".join([samtools_path, "sort -m 1G", outbam, outbam]) + "\n"
+		else:
+			shell_line = " ".join([samtools_path, "sort -m 1G -o", outbam + ".bam", outbam]) + "\n"
+		oshell.write(shell_line)
+		shell_line = "mv " + outbam + ".bam " + outbam + "\n"
 		oshell.write(shell_line)
 		oshell.close()
 
