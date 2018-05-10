@@ -99,7 +99,7 @@ python3 LRTK-SEQ.py \<command\> [options]
     -p --parallel, int, the number CPUs can be used in parallel [default: 1]
     -z --splitsize, int, the amount of reads of splited fastq, reads num = split_size / 8 [default: 60000000 lines, 7500000 read-pairs, compressed file size: ~300M]
 
-`Basicall` includes five submodules: `PRE`, `MFQ`, `ALN`, `MARK`, `BQSR`, `STAT` and `MERGE`, which would be carried out step by step. Users can also choose any steps to run independently by using `‘Basic’`. <br><br>
+`Basicall` includes seven submodules: `PRE`, `MFQ`, `ALN`, `MARK`, `BQSR`, `STAT` and `MERGE`, which would be carried out step by step. Users can also choose any steps to run independently by using `‘Basic’`. <br><br>
 `Basicall` would generate the processed fastq files, recalibrated bam files, and filtered (based on molecule info) bam files which would be used for variation calling.
 
 eg. <br>
