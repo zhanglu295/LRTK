@@ -120,7 +120,7 @@ class OUTERSOFT:
 		tmpshell = os.path.join(shelldir, 'mark_duplicate.sh')
 		logfile = tmpshell + ".log"
 		wtmpshell = open(tmpshell, 'w')
-		shell_line = " ".join([java_path, '-jar', picard_path, 'MarkDuplicates', "I=" + oribam, "O=" + markedbam, "M=" + metrics, picard_paramter, "2>", logfile, "\n"])
+		shell_line = " ".join([java_path, "-Djava.io.tmpdir=" + shelldir, '-Xmx20g -jar', picard_path, 'MarkDuplicates', "I=" + oribam, "O=" + markedbam, "M=" + metrics, picard_paramter, "2>", logfile, "\n"])
 		wtmpshell.write(shell_line)
 		wtmpshell.close()
 		subprocess.call(["sh", tmpshell])
@@ -178,6 +178,11 @@ if __name__ == '__main__':
 	picardpath = G.Picard()
 	picard_merge_parameter = G.PicardMergeparameter()
 	picard_mark_parameter = G.PicardMarkparameter()
+
+	metrics_file = outputbam.replace('bam', 'metrics.txt')
+	if os.path.exists(metrics_file) and os.path.getsize(metrics_file):
+		sys.stderr.write("[ %s ] marked bam file has been written to %s\n" % (time.asctime(), outputbam))
+		sys.exit(1)
 
 	bamline = open(inputbamlist, 'r').readlines()
 	MergedBam = None

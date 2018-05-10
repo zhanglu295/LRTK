@@ -55,6 +55,10 @@ class baseinfo:
 		abs_path = self.get_path('dbsnp')
 		return abs_path
 
+	def High_confidence(self):
+		abs_path = self.get_path('high_confidence')
+		return abs_path
+
 	def Gold_indel(self):
 		abs_path = self.get_path('gold_indel')
 		return abs_path
@@ -64,7 +68,7 @@ class baseinfo:
 		return abs_path
 
 class OUTERSOFT:
-	def GATK_BQSR(self, oribam, bqsrbam, java_path, picard_path, gatk_path, ref_path, dbsnp_path, gold_indel_path, intervals_path):
+	def GATK_BQSR(self, oribam, bqsrbam, java_path, picard_path, gatk_path, ref_path, high_confidence_path, gold_indel_path, intervals_path):
 		bamdir = os.path.dirname(bqsrbam)
 		shelldir = bamdir + "/shell"
 		if os.path.isdir(shelldir):
@@ -99,15 +103,11 @@ class OUTERSOFT:
 		wtmpshell = open(tmpshell, 'w')
 		shell_line = "set -e\n"
 		wtmpshell.write(shell_line)
-		shell_line = " ".join([java_path, "-Xmx4g -Djava.io.tmpdir=" + tmpdir, "-jar", gatk_path, "-T RealignerTargetCreator -nt 4 -R", ref_path, "-I", oribam, "-known", dbsnp_path, "-known", gold_indel_path, "-o", bqsrbam + ".realn.intervals -L", intervals_path, "2>", logfile, "\n"])
+		shell_line = " ".join([java_path, "-Xmx4g -Djava.io.tmpdir=" + tmpdir, "-jar", gatk_path, "BaseRecalibrator -R", ref_path, "-I", oribam, "--knownSites", gold_indel_path, "--knownSites", high_confidence_path, "-O", bqsrbam + ".recal_data.table", "-L", intervals_path, "2>", logfile, "\n"])
 		wtmpshell.write(shell_line)
-		shell_line = " ".join([java_path, "-Xmx4g -Djava.io.tmpdir=" + tmpdir, "-jar", gatk_path, "-T IndelRealigner -LOD 0.4 -R", ref_path, "-I", oribam, "-known", dbsnp_path, "-known", gold_indel_path, "-o", bqsrbam + ".realn.bam --targetIntervals", bqsrbam + ".realn.intervals", "2>>", logfile, "\n"])
+		shell_line = " ".join([java_path, "-Xmx4g -Djava.io.tmpdir=" + tmpdir, "-jar", gatk_path, "ApplyBQSR -R", ref_path, "-I", oribam, "-bqsr", bqsrbam + ".recal_data.table", "-O", bqsrbam, "2>>", logfile, "\n"])
 		wtmpshell.write(shell_line)
-		shell_line = " ".join([java_path, "-Xmx4g -Djava.io.tmpdir=" + tmpdir, "-jar", gatk_path, "-T BaseRecalibrator -R", ref_path, "-I", bqsrbam + ".realn.bam", "-knownSites", dbsnp_path, "-knownSites", gold_indel_path, "-o", bqsrbam + ".realn.bam.grp", "2>>", logfile, "\n"])
-		wtmpshell.write(shell_line)
-		shell_line = " ".join([java_path, "-Xmx4g -Djava.io.tmpdir=" + tmpdir, "-jar", gatk_path, "-T PrintReads -R", ref_path, "-I", bqsrbam + ".realn.bam", "-BQSR", bqsrbam + ".realn.bam.grp", "-o", bqsrbam, "2>>", logfile, "\n"])
-		wtmpshell.write(shell_line)
-		shell_line = " ".join(["mv", bqsrbam + ".*", tmpdir, "\n"])
+		shell_line = "echo Done > " + tmpshell + ".sign"
 		wtmpshell.write(shell_line)
 		wtmpshell.close()
 		subprocess.call(["sh", tmpshell])
@@ -166,11 +166,16 @@ if __name__ == '__main__':
 	picardpath = G.Picard()
 	gatkpath = G.Gatk()
 	refpath = G.Ref()
-	dbsnppath = G.Dbsnp()
+	high_confidencepath = G.High_confidence()
 	gold_indelpath = G.Gold_indel()
 	intervalspath = G.Intervals()
 
-	outputbam = O.GATK_BQSR(inputbam, outputbam, javapath, picardpath, gatkpath, refpath, dbsnppath, gold_indelpath, intervalspath)
+	sign_file = os.path.dirname(outputbam) + "/shell/bqsr.sh.sign"
+	if os.path.exists(sign_file) and os.path.getsize(sign_file) and os.path.exists(outputbam):
+		sys.stderr.write("[ %s ] BQSR has been done: %s \n\n" % (time.asctime(), outputbam))
+		sys.exit(1)
+
+	outputbam = O.GATK_BQSR(inputbam, outputbam, javapath, picardpath, gatkpath, refpath, high_confidencepath, gold_indelpath, intervalspath)
 
 	if os.path.exists(outputbam) == False:
 		sys.stderr.write("\nERROR: %s has not been created, please check the warning info and try again\n\n" % outputbam)

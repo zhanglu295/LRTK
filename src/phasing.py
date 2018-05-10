@@ -118,7 +118,13 @@ if __name__ == '__main__':
 		b = str(vcfname)
 		b = b[0:(len(b)-3)]
 		newUnphaseVcf = outputdir + '/' + b
-		subprocess.call(["gunzip -c", UnphaseVcf, ">", newUnphaseVcf])
+		tmpshell = outputdir + "/gunzip_vcf.sh"
+		wtmpshell = open(tmpshell, 'w')
+		wtmpshell.write("gunzip -c " + UnphaseVcf + " > " + newUnphaseVcf + "\n")
+		wtmpshell.close()
+		subprocess.call(["sh", tmpshell])
+		subprocess.call(["rm", tmpshell])
+#		subprocess.call(["gunzip", "-c", UnphaseVcf, ">", newUnphaseVcf])
 		UnphaseVcf = newUnphaseVcf
 		vcfname = b
 
@@ -155,7 +161,7 @@ if __name__ == '__main__':
 		readdict[fragmentinfolist[1]] = fragmentinfolist[0]
 	rfragment.close()
 
-	PhasedBam = Markedbam.replace("bam", "addPhaseInfo.bam")
+	PhasedBam = outputdir + os.path.basename(Markedbam).replace("bam", "addPhaseInfo.bam")
 	barcode_phase_file = PhasedBam.replace("addPhaseInfo.bam", "addPhaseInfo.barcode.csv")
 	rbam = pysam.AlignmentFile(Markedbam, 'rb')
 	wbam = pysam.AlignmentFile(PhasedBam, 'wb', template = rbam)

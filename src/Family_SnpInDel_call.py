@@ -74,7 +74,7 @@ class baseinfo:
 	def Omni(self):
 		abs_path = self.get_path('omni')
 		return abs_path
-
+	
 	def High_confidence(self):
 		abs_path = self.get_path('high_confidence')
 		return abs_path
@@ -95,10 +95,10 @@ def usage():
 	Usage: python alignment.py <options>
 
 	Options:
-		-i --input, bam file
+		-i --input, gvcf file list
 		-o --outputdir, the path of output directory
 		-c --config, the path of configuration file [default: outdir/config/Reseq.config]
-		-p --parallel, the number of parallele tasks for variant call [default: 3]
+		-p --parallel, the number of parallele tasks for variant call [default: 4]
 		-L --chrlist, file including chromosomes that would call variant
 		-h --help, help info
 
@@ -110,16 +110,16 @@ if __name__ == '__main__':
 		usage()
 		sys.exit(-1)
 
-	inputbam = None
+	inputgvcf = None
 	outputdir = None
 	ConfigFile = None
 	Chrlist = None
-	ParallelNum = 3
+	ParallelNum = 4
 
 	opts, args = getopt.gnu_getopt(sys.argv[1:], 'i:o:c:p:L:h:', ['input', 'outputdir', 'config', 'parallel', 'chrlist', 'help'])
 	for o, a in opts:
 		if o == '-i' or o == '--input':
-			inputbam = a
+			inputgvcf = a
 		if o == '-o' or o == '--outputdir':
 			outputdir = a
 		if o == '-c' or o == '--config':
@@ -167,12 +167,28 @@ if __name__ == '__main__':
 
 	Chrshell = list()
 	rChrlist = open(Chrlist, 'r')
-	ChrGvcflist = list()
+	ChrVcflist = list()
 	chrpriority = None
 	AllChrVcf = None
-	gvcf_file_list = os.path.join(vcfdir, "gvcf.list")
 	bychrvcfdir = os.path.join(vcfdir, "bychr")
-	wgvcf_file_list = open(gvcf_file_list, "w")
+	tmpdir = vcfdir + "/tmp"
+	if os.path.exists(tmpdir) == False or os.path.isdir(tmpdir) == False:
+		os.mkdir(tmpdir)
+
+	gvcf_dict = dict()
+	rinputgvcf = open(inputgvcf, 'r')
+	for inputgvcf_info in rinputgvcf:
+		#(SampleId, gvcf_path) = re.split("\t", inputgvcf_info.strip())
+		gvcf_path = inputgvcf_info.strip()
+		rgvcf_path = open(gvcf_path, 'r')
+		for gvcf_path_info in rgvcf_path:
+			(chrId, chrGvcf) = re.split("\t", gvcf_path_info.strip())
+			if chrId not in gvcf_dict:
+				gvcf_dict[chrId] = chrGvcf
+			else:
+				gvcf_dict[chrId] = gvcf_dict[chrId] + " -V " + chrGvcf
+		rgvcf_path.close()
+	rinputgvcf.close()
 
 	if os.path.isdir(bychrvcfdir):
 		pass
@@ -186,24 +202,15 @@ if __name__ == '__main__':
 			chrgvcf = os.path.join(bychrvcfdir, ch + ".gvcf.gz")
 			chrvcf = os.path.join(bychrvcfdir, ch + ".vcf.gz")
 			wchrshell = open(chrshell, 'w')
-			if os.path.exists(dbsnp):
-				shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "HaplotypeCaller -R", ref, "-I", inputbam, "-ERC GVCF", "--dbsnp", dbsnp, "-L", ch, "-O", chrgvcf, "2>", logfile, "\n"])
-			else:
-				shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "HaplotypeCaller -R", ref, "-I", inputbam, "-ERC GVCF", "-L", ch, "-O", chrgvcf, "2>", logfile, "\n"])
+			shell_line = " ".join(["set -e\n", javapath, "-Djava.io.tmpdir=" + tmpdir, "-Xmx2g -jar", gatkpath, "CombineGVCFs -R", ref, "-V", gvcf_dict[ch], "-O", chrgvcf, "2>", logfile, "\n"])
 			wchrshell.write(shell_line)
-			shell_line = " ".join([javapath, "-Djava.io.tmpdir=" + vcfdir, "-jar", gatkpath, "IndexFeatureFile -F", chrgvcf + "\n"])
+			shell_line = " ".join([javapath, "-Djava.io.tmpdir=" + tmpdir, "-Xmx2g -jar", gatkpath, "GenotypeGVCFs -R", ref, " -V", chrgvcf, "-O", chrvcf, "--dbsnp", dbsnp, "-L", ch, "2>>", logfile, "\n"])
 			wchrshell.write(shell_line)
-			if os.path.exists(dbsnp):
-				shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "GenotypeGVCFs -R", ref, "-V", chrgvcf, "-O", chrvcf, "--dbsnp", dbsnp, "-L", ch, "2>>", logfile, "\n"])
-			else:
-				shell_line = " ".join([javapath, "-Xmx2g -jar", gatkpath, "GenotypeGVCFs -R", ref, "-V", chrgvcf, "-O", chrvcf, "-L", ch, "2>>", logfile, "\n"])
-			wgvcf_file_list.write(ch + "\t" + chrgvcf + "\n")
-			ChrGvcflist.append(chrvcf)
-			wchrshell.write(shell_line)
-			shell_line = " ".join(["echo Done! >", chrshell + ".sign\n"])
+			shell_line = "echo Work is completed! > " + chrshell + ".sign"
 			wchrshell.write(shell_line)
 			wchrshell.close()
 
+			ChrVcflist.append(chrvcf)
 			Chrshell.append(chrshell)
 			if chrpriority == None:
 				chrpriority = str(ch)
@@ -211,21 +218,17 @@ if __name__ == '__main__':
 			else:
 				chrpriority = chrpriority + "," + str(ch)
 				AllChrVcf = AllChrVcf + " -I " + chrvcf
-	wgvcf_file_list.close()
 
 	UnphaseVcf = os.path.join(vcfdir, "all.vcf.gz")
 	tmpshell = os.path.join(shelldir, "combine_vcf.sh")
-	tmpdir = os.path.join(vcfdir, "tmp")
-	if os.path.isdir(tmpdir) == False:
-		os.mkdir(tmpdir)
 	logfile = tmpshell + ".log"
 	wtmpshell = open(tmpshell, 'w')
 	#AllChrVcf = AllChrVcf.replace("--variant:", "-I")
-	shell_line = " ".join(["set -e\n", javapath, "-Xmx3g -jar", gatkpath, "MergeVcfs -R", ref, AllChrVcf, "-O", UnphaseVcf, "--CREATE_INDEX", "2>", logfile, "\n"])
+	shell_line = " ".join(["set -e\n", javapath, "-Xmx5g -jar", gatkpath, "MergeVcfs -R", ref, AllChrVcf, "-O", UnphaseVcf, "--CREATE_INDEX 2>", logfile, "\n"])
 	wtmpshell.write(shell_line)
 	recalFile = vcfdir + "/all.snp.recal"
 	tranchesFile = vcfdir + "/all.snp.tranches"
-#	rscriptFile = vcfdir + "/all.snp.R"
+	rscriptFile = vcfdir + "/all.snp.R"
 	UnphaseVcf1 = vcfdir + "/all.SNP.recal.vcf.gz"
 	shell_line = " ".join([javapath, "-Xmx5g -jar", gatkpath, "VariantRecalibrator -an QD -an MQRankSum -an ReadPosRankSum -an FS -an DP -an MQ -an SOR -mode SNP -R", ref, "-V", UnphaseVcf, "--resource hapmap,known=false,training=true,truth=true,prior=15.0:" + hapmap, "--resource omni,known=false,training=true,truth=true,prior=12.0:" + omni, "--resource 1000G,known=false,training=true,truth=false,prior=10.0:" + high_confidence, "--resource dbsnp,known=true,training=false,truth=false,prior=2.0:" + dbsnp, "-O", recalFile, "--tranches-file", tranchesFile, "--max-gaussians 4\n"])
 	wtmpshell.write(shell_line)
@@ -237,7 +240,7 @@ if __name__ == '__main__':
 	tranchesFile = vcfdir + "/all.indel.tranches"
 	rscriptFile = vcfdir + "/all.indel.R"
 	UnphaseVcf2 = vcfdir + "/all.SNP.INDEL.VQSR.vcf.gz"
-	shell_line = " ".join([javapath, "-Xmx5g -jar", gatkpath, "VariantRecalibrator -an QD -an FS -an MQ -an MQRankSum -an ReadPosRankSum -an SOR -mode INDEL -tranche 100.0 -tranche 99.9 -tranche 90.0 -R", ref, "-V", UnphaseVcf1, "--resource mills,known=false,training=true,truth=true,prior=12.0:" + mills, "--resource dbsnp,known=true,training=false,truth=false,prior=2.0:" + dbsnp, "-O", recalFile, "--tranches-file", tranchesFile , "--max-gaussians 4"]) + "\n"
+	shell_line = " ".join([javapath, "-Xmx5g -jar", gatkpath, "VariantRecalibrator -an QD -an FS -an MQ -an MQRankSum -an ReadPosRankSum -an SOR -mode INDEL -tranche 100.0 -tranche 99.9 -tranche 90.0 -R", ref, "-V", UnphaseVcf1, "--resource mills,known=false,training=true,truth=true,prior=12.0:" + mills, "--resource dbsnp,known=true,training=false,truth=false,prior=2.0:" + dbsnp, "-O", recalFile, "--tranches-file", tranchesFile, "--max-gaussians 4"]) + "\n"
 	wtmpshell.write(shell_line)
 	shell_line = " ".join([javapath, "-Xmx5g -jar", gatkpath, "ApplyVQSR -ts-filter-level 99.9 -mode INDEL -R", ref, "-V", UnphaseVcf1, "--recal-file", recalFile, "--tranches-file", tranchesFile, "-O", UnphaseVcf2]) + "\n"
 	wtmpshell.write(shell_line)
@@ -255,4 +258,4 @@ if __name__ == '__main__':
 		qinfo = ch + "\t" + Chrshell_info + ":6G\t" + tmpshell + ":6G\n"
 		wqsub_shell_txt.write(qinfo)
 	wqsub_shell_txt.close()
-#	subprocess.call(["sh", tmpshell])
+	#subprocess.call(["sh", tmpshell])

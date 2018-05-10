@@ -16,6 +16,8 @@ class create_config:
 		rfai.close()
 
 		roriginal_region = open(original_region, 'r')
+		based_bed = outputdir + "/original.intervals"
+		wbased_bed = open(based_bed, 'w')
 		out_intervals = outputdir + "/extend.intervals"
 		wout_intervals = open(out_intervals, 'w')
 		chr_id = None
@@ -27,6 +29,9 @@ class create_config:
 			(chrid, start, end) = re.split("\t", bedinfo.strip())
 			start = int(start)
 			end = int(end)
+			if len(chrid) < 6:
+				bed_0 = chrid + ":" + str(start) + "-" + str(end) + "\n"
+				wbased_bed.write(bed_0)
 			if chr_id == None:
 				chr_id = chrid
 				ori_min = start
@@ -72,6 +77,7 @@ class create_config:
 		wout_intervals.write(intervals)
 		wout_intervals.close()
 		roriginal_region.close()
+		wbased_bed.close()
 
 		return(out_intervals)
 
@@ -95,11 +101,12 @@ class create_config:
 		script_abs_path = os.path.abspath(sys.argv[0])
 		bwa = script_dir + '/bwa'
 		samtools = script_dir + '/samtools'
+		sambamba = script_dir + '/sambamba'
 		picard = script_dir + '/picard.jar'
 		fastqc = script_dir + '/FastQC/fastqc'
 		gatk = script_dir + '/GenomeAnalysisTK.jar'
-		java = 'java'
-		config_line = "\n".join(["###basic software", "bwa = " + bwa, "samtools = " + samtools, "picard = " + picard, "java = " + java, "", ""])
+		java = script_dir + '/java'
+		config_line = "\n".join(["###basic software", "bwa = " + bwa, "sambamba = " + sambamba, "samtools = " + samtools, "picard = " + picard, "java = " + java, "", ""])
 		wBasic_config_file.write(config_line)
 		barcode_fa = dataset_dir + '/barcode_whitelist.fasta'
 		config_line = "\n".join(["###barcode modification", "barcode_fa = " + barcode_fa, "barcode_aln_parameter = -l 5", "fastqc = " + fastqc, "", ""])
@@ -115,8 +122,12 @@ class create_config:
 		wBasic_config_file.write(config_line)
 #		dbsnp_vcf = dataset_dir + '/GATK_bundle/dbsnp_146.hg38.vcf'
 		dbsnp_vcf = self.find_dbsnp(dataset_dir)
-		gold_indel_vcf = dataset_dir + '/GATK_bundle/Mills_and_1000G_gold_standard.indels.hg38.vcf'
-		config_line = "\n".join(["###BQSR", "gatk = " + gatk, "dbsnp = " + dbsnp_vcf, "gold_indel = " + gold_indel_vcf, "intervals = " + extended_intervals, "", ""])
+		gold_indel_vcf = dataset_dir + '/GATK_bundle/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz'
+		hapmap = dataset_dir + '/GATK_bundle/hapmap_3.3.hg38.vcf.gz'
+		omni = dataset_dir + '/GATK_bundle/1000G_omni2.5.hg38.vcf.gz'
+		mills = dataset_dir + '/GATK_bundle/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz'
+		high_confidence = dataset_dir + '/GATK_bundle/1000G_phase1.snps.high_confidence.hg38.vcf.gz'
+		config_line = "\n".join(["###BQSR", "gatk = " + gatk, "dbsnp = " + dbsnp_vcf, "gold_indel = " + gold_indel_vcf, "hapmap = " + hapmap, "high_confidence = " + high_confidence, "omni = " + omni, "mills = " + mills, "intervals = " + extended_intervals, "", ""])
 		wBasic_config_file.write(config_line)
 		wBasic_config_file.close()
 
@@ -126,12 +137,17 @@ class create_config:
 		dataset_dir = str(dataset_dir)
 		genome_fa = dataset_dir + '/GATK_bundle/Homo_sapiens_assembly38.fasta'
 		gatk = script_dir + '/GenomeAnalysisTK.jar'
+		sambamba = script_dir + '/sambamba'
 #		dbsnp = dataset_dir + '/GATK_bundle/dbsnp_146.hg38.vcf'
 		dbsnp_vcf = self.find_dbsnp(dataset_dir)
-		java = 'java'
+		hapmap = dataset_dir + '/GATK_bundle/hapmap_3.3.hg38.vcf.gz'
+		omni = dataset_dir + '/GATK_bundle/1000G_omni2.5.hg38.vcf.gz'
+		mills = dataset_dir + '/GATK_bundle/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz'
+		high_confidence = dataset_dir + '/GATK_bundle/1000G_phase1.snps.high_confidence.hg38.vcf.gz'
+		java = script_dir + '/java'
 		config_line = "\n".join(["###basic software", "java = " + java, "", ""])
 		wReseq_config_file.write(config_line)
-		config_line = "\n".join(["###variation call", "gatk = " + gatk, "ref = " + genome_fa, "dbsnp = " + dbsnp_vcf, "HaplotypeCaller_par = --variant_index_type LINEAR --variant_index_parameter 128000", "GenotypeGVCFs_par = None", "intervals = " + extended_intervals, "", ""])
+		config_line = "\n".join(["###variation call", "gatk = " + gatk, "sambamba = " + sambamba, "ref = " + genome_fa, "dbsnp = " + dbsnp_vcf, "hapmap = " + hapmap, "high_confidence = " + high_confidence, "omni = " + omni, "mills = " + mills, "HaplotypeCaller_par = --variant_index_type LINEAR --variant_index_parameter 128000", "GenotypeGVCFs_par = None", "intervals = " + extended_intervals, "", ""])
 		wReseq_config_file.write(config_line)
 		config_line = "\n".join(["###SV call", "", ""])
 		wReseq_config_file.write(config_line)
@@ -186,9 +202,9 @@ if __name__ == '__main__':
 	else:
 		command = sys.argv[1]
 		outputdir = None
-		SoftwarePathDir = None
-		DatasetPathDir = None
-		target_bed = None
+		SoftwarePathDir = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0]))) + "/bin"
+		DatasetPathDir = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0]))) + "/dataset"
+		target_bed = DatasetPathDir + "/GATK_bundle/nonN.bed"
 		extend_size = 500
 
 		commandlist = ["Basic", "Reseq", "Denovo", "all"]
@@ -196,6 +212,13 @@ if __name__ == '__main__':
 			sys.stderr.write(" %s is not supported in command!\n\n" % command)
 			usage()
 			sys.exit(-1)
+
+		if os.path.exists(target_bed) == False or os.path.isfile(target_bed) == False:
+			reffa = DatasetPathDir + "/GATK_bundle/Homo_sapiens_assembly38.fasta"
+			find_nonN_src = os.path.dirname(os.path.abspath(sys.argv[0])) + "/find_nonN_region.py"
+			print("[ %s ] ERROR: %s does not exist, you can create it by using the command:\n" % (time.asctime(), target_bed))
+			print("python %s %s %s\n" % (find_nonN_src, reffa, target_bed))
+			sys.exit()
 
 		opts, args = getopt.gnu_getopt(sys.argv[2:], 'o:s:d:b:e:h:', ['outputdir', 'softwarepath', 'datasetpath', 'bed', 'extend', 'help'])
 		for o, a in opts:
@@ -225,7 +248,7 @@ if __name__ == '__main__':
 			C.Reseq_config(config_file, SoftwarePathDir, DatasetPathDir)
 			sys.stderr.write("[ %s ] configuration file for `Reseq` has been generated: %s \n" % (time.asctime(), config_file))
 
-		if command == "Denovo" or command == "all":
-			config_file = os.path.join(outputdir, "Denovo.config")
-			C.Denovo_config(config_file, SoftwarePathDir, DatasetPathDir)
-			sys.stderr.write("[ %s ] configuration file for de novo assembly has been created: %s \n" % (time.asctime(), config_file))
+#		if command == "Denovo" or command == "all":
+#			config_file = os.path.join(outputdir, "Denovo.config")
+#			C.Denovo_config(config_file, SoftwarePathDir, DatasetPathDir)
+#			sys.stderr.write("[ %s ] configuration file for de novo assembly has been created: %s \n" % (time.asctime(), config_file))

@@ -82,6 +82,7 @@ class OUTERSOFT:
 		tmpshell = os.path.join(shelldir, "merge_bam.sh")
 		logfile = tmpshell + ".log"
 		wtmpshell = open(tmpshell, 'w')
+		wtmpshell.write("set -e\n")
 		if bamnum > 1:
 			shell_line = " ".join([java_path, "-Xmx5g -jar", picard_path, "MergeSamFiles", multiple_bam, "O=" + mergedbam, picard_paramter, "2>", logfile, "\n"])
 		else:
